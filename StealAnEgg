@@ -1,0 +1,591 @@
+--[[ Santos Hub UI shell | Aron ]]
+-- YARHM-style boot with safe parent fallback.
+
+if not game:IsLoaded() then
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Santos Hub",
+            Text = "Waiting for game to finish loading...",
+            Duration = 5
+        })
+    end)
+    game.Loaded:Wait()
+end
+
+local Players           = game:GetService("Players")
+local UIS               = game:GetService("UserInputService")
+local RunService        = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualUser       = game:GetService("VirtualUser")
+local LP                = Players.LocalPlayer
+
+local G = (getgenv and getgenv()) or _G
+
+-- ===== Safe GUI parent selector =====
+local function getGuiParent()
+    -- 1. Executor hidden UI
+    if type(gethui) == "function" then
+        local ok, hui = pcall(gethui)
+        if ok and hui then return hui, "gethui" end
+    end
+    -- 2. CoreGui — test write access first
+    local coreOk, coreGui = pcall(function()
+        return game:GetService("CoreGui")
+    end)
+    if coreOk and coreGui then
+        local test = Instance.new("Folder")
+        local writeOk = pcall(function() test.Parent = coreGui end)
+        if writeOk and test.Parent == coreGui then
+            test:Destroy()
+            return coreGui, "CoreGui"
+        end
+        pcall(function() test:Destroy() end)
+    end
+    -- 3. PlayerGui fallback
+    local pg = LP and LP:WaitForChild("PlayerGui", 10)
+    if pg then return pg, "PlayerGui" end
+    return nil, "none"
+end
+
+-- ===== Build wrapped in xpcall =====
+local buildOk, buildErr = xpcall(function()
+
+    if type(G.__SANTOS_SHUTDOWN) == "function" then
+        pcall(G.__SANTOS_SHUTDOWN)
+        task.wait(0.1)
+    end
+
+    local parentTarget, parentName = getGuiParent()
+    if not parentTarget then
+        error("No writable GUI parent available")
+    end
+
+    G.SantosState = {
+        autofarm=false, preferHighValue=true, autoReturn=true, autoDrop=false, serverHop=false,
+        autoPlace=false, autoHatch=false, autoSellEggs=false, autoEquipBest=false, autoFuse=false,
+        autoSellPets=false, neverSellMutated=true, neverSellEquipped=true,
+        claimOffline=false, autoUpgrade=false, autoTreadmill=false, autoClaimIndex=false,
+        autoGroupReward=false, autoBuyTrail=false, autoEquipTrail=false,
+        speedOn=false, walkSpeed=32, infJump=false, noclip=false, fly=false, flySpeed=32, antiAfk=true,
+        running=true,
+    }
+    local S = G.SantosState
+
+    local T = {
+        Bg=Color3.fromRGB(12,18,14), Panel=Color3.fromRGB(18,28,22),
+        Accent=Color3.fromRGB(0,255,130), Dark=Color3.fromRGB(0,180,90),
+        Text=Color3.fromRGB(230,255,240), Dim=Color3.fromRGB(140,180,155),
+        Off=Color3.fromRGB(40,55,45),
+    }
+
+    -- ===== Instance table =====
+    local C = {}
+    C.SG = Instance.new("ScreenGui")
+    C.Main = Instance.new("Frame")
+    C.MainCorner = Instance.new("UICorner")
+    C.MainStroke = Instance.new("UIStroke")
+    C.Bar = Instance.new("Frame")
+    C.BarCorner = Instance.new("UICorner")
+    C.Title = Instance.new("TextLabel")
+    C.Author = Instance.new("TextLabel")
+    C.Min = Instance.new("TextButton")
+    C.MinCorner = Instance.new("UICorner")
+    C.Bubble = Instance.new("TextButton")
+    C.BubbleCorner = Instance.new("UICorner")
+    C.BubbleStroke = Instance.new("UIStroke")
+    C.Side = Instance.new("Frame")
+    C.SideCorner = Instance.new("UICorner")
+
+    local TAB_NAMES = { "Farm", "Eggs", "Progress", "Character" }
+    C.TabBtn = {}
+    C.TabPage = {}
+    C.TabLayout = {}
+    C.TabCorner = {}
+    for i = 1, #TAB_NAMES do
+        C.TabBtn[i] = Instance.new("TextButton")
+        C.TabBtn[i].Name = "Tab_" .. TAB_NAMES[i]
+        C.TabPage[i] = Instance.new("ScrollingFrame")
+        C.TabPage[i].Name = "Page_" .. TAB_NAMES[i]
+        C.TabLayout[i] = Instance.new("UIListLayout")
+        C.TabCorner[i] = Instance.new("UICorner")
+    end
+
+    -- ===== Property pass =====
+    C.SG.Name = "SantosHub"
+    C.SG.ResetOnSpawn = false
+    C.SG.IgnoreGuiInset = true
+    C.SG.DisplayOrder = 9999
+    C.SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+    C.Main.Name = "Main"
+    C.Main.Size = UDim2.new(0,460,0,340)
+    C.Main.Position = UDim2.new(0.5,-230,0.5,-170)
+    C.Main.BackgroundColor3 = T.Bg
+    C.Main.BorderSizePixel = 0
+    C.Main.Active = true
+
+    C.MainCorner.CornerRadius = UDim.new(0,10)
+    C.MainStroke.Color = T.Accent
+    C.MainStroke.Thickness = 1.4
+    C.MainStroke.Transparency = 0.35
+
+    C.Bar.Name = "Bar"
+    C.Bar.Size = UDim2.new(1,0,0,34)
+    C.Bar.BackgroundColor3 = T.Panel
+    C.Bar.BorderSizePixel = 0
+    C.BarCorner.CornerRadius = UDim.new(0,10)
+
+    C.Title.Size = UDim2.new(1,-80,1,0)
+    C.Title.Position = UDim2.new(0,12,0,0)
+    C.Title.BackgroundTransparency = 1
+    C.Title.Text = "SANTOS HUB  |  Steal An Egg"
+    C.Title.TextColor3 = T.Accent
+    C.Title.Font = Enum.Font.GothamBold
+    C.Title.TextSize = 14
+    C.Title.TextXAlignment = Enum.TextXAlignment.Left
+
+    C.Author.Size = UDim2.new(0,40,1,0)
+    C.Author.Position = UDim2.new(1,-78,0,0)
+    C.Author.BackgroundTransparency = 1
+    C.Author.Text = "Aron"
+    C.Author.TextColor3 = T.Dim
+    C.Author.Font = Enum.Font.Gotham
+    C.Author.TextSize = 12
+    C.Author.TextXAlignment = Enum.TextXAlignment.Right
+
+    C.Min.Size = UDim2.new(0,26,0,26)
+    C.Min.Position = UDim2.new(1,-30,0.5,-13)
+    C.Min.BackgroundColor3 = T.Accent
+    C.Min.Text = "–"
+    C.Min.TextColor3 = Color3.new(0,0,0)
+    C.Min.Font = Enum.Font.GothamBold
+    C.Min.TextSize = 16
+    C.MinCorner.CornerRadius = UDim.new(0,6)
+
+    C.Bubble.Size = UDim2.new(0,48,0,48)
+    C.Bubble.Position = UDim2.new(1,-70,0.5,-24)
+    C.Bubble.BackgroundColor3 = T.Accent
+    C.Bubble.Text = "S"
+    C.Bubble.TextColor3 = Color3.new(0,0,0)
+    C.Bubble.Font = Enum.Font.GothamBold
+    C.Bubble.TextSize = 20
+    C.Bubble.Visible = false
+    C.BubbleCorner.CornerRadius = UDim.new(1,0)
+    C.BubbleStroke.Color = Color3.fromRGB(0,200,100)
+    C.BubbleStroke.Thickness = 2
+
+    C.Side.Size = UDim2.new(0,100,1,-42)
+    C.Side.Position = UDim2.new(0,8,0,38)
+    C.Side.BackgroundColor3 = T.Panel
+    C.Side.BorderSizePixel = 0
+    C.SideCorner.CornerRadius = UDim.new(0,8)
+
+    for i, name in ipairs(TAB_NAMES) do
+        C.TabBtn[i].Size = UDim2.new(1,-10,0,30)
+        C.TabBtn[i].Position = UDim2.new(0,5,0,6+(i-1)*36)
+        C.TabBtn[i].BackgroundColor3 = T.Panel
+        C.TabBtn[i].Text = name
+        C.TabBtn[i].TextColor3 = T.Text
+        C.TabBtn[i].Font = Enum.Font.GothamBold
+        C.TabBtn[i].TextSize = 12
+        C.TabBtn[i].BorderSizePixel = 0
+        C.TabBtn[i].AutoButtonColor = false
+        C.TabCorner[i].CornerRadius = UDim.new(0,5)
+
+        C.TabPage[i].Size = UDim2.new(1,-120,1,-48)
+        C.TabPage[i].Position = UDim2.new(0,116,0,40)
+        C.TabPage[i].BackgroundTransparency = 1
+        C.TabPage[i].BorderSizePixel = 0
+        C.TabPage[i].ScrollBarThickness = 3
+        C.TabPage[i].ScrollBarImageColor3 = T.Accent
+        C.TabPage[i].CanvasSize = UDim2.new(0,0,0,0)
+        C.TabPage[i].AutomaticCanvasSize = Enum.AutomaticSize.Y
+        C.TabPage[i].Visible = false
+
+        C.TabLayout[i].SortOrder = Enum.SortOrder.LayoutOrder
+        C.TabLayout[i].Padding = UDim.new(0,4)
+    end
+
+    -- ===== Parent pass =====
+    C.SG.Parent = parentTarget
+    C.MainCorner.Parent = C.Main
+    C.MainStroke.Parent = C.Main
+    C.Main.Parent = C.SG
+    C.BarCorner.Parent = C.Bar
+    C.Bar.Parent = C.Main
+    C.Title.Parent = C.Bar
+    C.Author.Parent = C.Bar
+    C.MinCorner.Parent = C.Min
+    C.Min.Parent = C.Bar
+    C.BubbleCorner.Parent = C.Bubble
+    C.BubbleStroke.Parent = C.Bubble
+    C.Bubble.Parent = C.SG
+    C.SideCorner.Parent = C.Side
+    C.Side.Parent = C.Main
+
+    for i = 1, #TAB_NAMES do
+        C.TabCorner[i].Parent = C.TabBtn[i]
+        C.TabBtn[i].Parent = C.Side
+        C.TabLayout[i].Parent = C.TabPage[i]
+        C.TabPage[i].Parent = C.Main
+    end
+
+    -- ===== Behavior =====
+    local pages, btns = {}, {}
+    for i, name in ipairs(TAB_NAMES) do
+        btns[name] = C.TabBtn[i]
+        pages[name] = C.TabPage[i]
+    end
+
+    local function tab(n)
+        for k, p in pairs(pages) do p.Visible = (k == n) end
+        for k, b in pairs(btns) do
+            b.BackgroundColor3 = (k == n) and T.Dark or T.Panel
+            b.TextColor3 = (k == n) and Color3.new(0,0,0) or T.Text
+        end
+    end
+
+    for i, name in ipairs(TAB_NAMES) do
+        C.TabBtn[i].MouseButton1Click:Connect(function() tab(name) end)
+    end
+
+    do
+        local drag, dStart, sPos
+        C.Bar.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                drag = true; dStart = input.Position; sPos = C.Main.Position
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then drag = false end
+                end)
+            end
+        end)
+        UIS.InputChanged:Connect(function(input)
+            if drag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                local d = input.Position - dStart
+                C.Main.Position = UDim2.new(sPos.X.Scale, sPos.X.Offset + d.X, sPos.Y.Scale, sPos.Y.Offset + d.Y)
+            end
+        end)
+    end
+
+    do
+        local bD, bS, bP
+        C.Bubble.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                bD = true; bS = input.Position; bP = C.Bubble.Position
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then bD = false end
+                end)
+            end
+        end)
+        UIS.InputChanged:Connect(function(input)
+            if bD and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                local d = input.Position - bS
+                C.Bubble.Position = UDim2.new(bP.X.Scale, bP.X.Offset + d.X, bP.Y.Scale, bP.Y.Offset + d.Y)
+            end
+        end)
+    end
+
+    C.Min.MouseButton1Click:Connect(function() C.Main.Visible = false; C.Bubble.Visible = true end)
+    C.Bubble.MouseButton1Click:Connect(function() C.Main.Visible = true; C.Bubble.Visible = false end)
+    C.Bubble.MouseButton2Click:Connect(function() S.running = false; C.SG:Destroy() end)
+
+    -- ===== Toggle builder =====
+    local order = { Farm = 0, Eggs = 0, Progress = 0, Character = 0 }
+
+    local function addToggle(pageKey, label, def, key)
+        order[pageKey] = order[pageKey] + 1
+        local page = pages[pageKey]
+
+        local row = Instance.new("Frame")
+        local lbl = Instance.new("TextLabel")
+        local btn = Instance.new("TextButton")
+        local corner = Instance.new("UICorner")
+
+        row.Name = "Row_" .. key
+        row.Size = UDim2.new(1,-6,0,28)
+        row.BackgroundTransparency = 1
+        row.LayoutOrder = order[pageKey]
+
+        lbl.Size = UDim2.new(1,-52,1,0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = label
+        lbl.TextColor3 = T.Text
+        lbl.Font = Enum.Font.Gotham
+        lbl.TextSize = 12
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+        btn.Size = UDim2.new(0,44,0,18)
+        btn.Position = UDim2.new(1,-48,0.5,-9)
+        btn.BackgroundColor3 = def and T.Accent or T.Off
+        btn.Text = def and "ON" or "OFF"
+        btn.TextColor3 = def and Color3.new(0,0,0) or T.Dim
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 10
+        btn.BorderSizePixel = 0
+        btn.AutoButtonColor = false
+
+        corner.CornerRadius = UDim.new(0,4)
+
+        corner.Parent = btn
+        lbl.Parent = row
+        btn.Parent = row
+        row.Parent = page
+
+        local on = def
+        btn.MouseButton1Click:Connect(function()
+            on = not on
+            btn.BackgroundColor3 = on and T.Accent or T.Off
+            btn.Text = on and "ON" or "OFF"
+            btn.TextColor3 = on and Color3.new(0,0,0) or T.Dim
+            S[key] = on
+        end)
+    end
+
+    -- ===== Slider builder =====
+    local function addSlider(pageKey, label, minV, maxV, def, key, suffix)
+        order[pageKey] = order[pageKey] + 1
+        local page = pages[pageKey]
+
+        local row = Instance.new("Frame")
+        local lbl = Instance.new("TextLabel")
+        local box = Instance.new("TextBox")
+        local corner = Instance.new("UICorner")
+
+        row.Name = "Slider_" .. key
+        row.Size = UDim2.new(1,-6,0,28)
+        row.BackgroundTransparency = 1
+        row.LayoutOrder = order[pageKey]
+
+        lbl.Size = UDim2.new(1,-82,1,0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = label
+        lbl.TextColor3 = T.Text
+        lbl.Font = Enum.Font.Gotham
+        lbl.TextSize = 12
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+        box.Size = UDim2.new(0,74,0,20)
+        box.Position = UDim2.new(1,-78,0.5,-10)
+        box.BackgroundColor3 = T.Off
+        box.Text = tostring(def) .. (suffix or "")
+        box.TextColor3 = T.Text
+        box.Font = Enum.Font.GothamBold
+        box.TextSize = 11
+        box.BorderSizePixel = 0
+        box.ClearTextOnFocus = false
+
+        corner.CornerRadius = UDim.new(0,4)
+
+        corner.Parent = box
+        lbl.Parent = row
+        box.Parent = row
+        row.Parent = page
+
+        box.FocusLost:Connect(function()
+            local num = tonumber(box.Text:match("-?%d+%.?%d*"))
+            if num then
+                num = math.clamp(num, minV, maxV)
+                S[key] = num
+                box.Text = tostring(num) .. (suffix or "")
+            else
+                box.Text = tostring(S[key]) .. (suffix or "")
+            end
+        end)
+    end
+
+    -- ===== FARM =====
+    addToggle("Farm", "Autofarm",           false, "autofarm")
+    addToggle("Farm", "Prefer High Value",  true,  "preferHighValue")
+    addToggle("Farm", "Auto Return",        true,  "autoReturn")
+    addToggle("Farm", "Auto Drop",          false, "autoDrop")
+    addToggle("Farm", "Server Hop",         false, "serverHop")
+
+    -- ===== EGGS =====
+    addToggle("Eggs", "Auto Place",          false, "autoPlace")
+    addToggle("Eggs", "Auto Hatch",          false, "autoHatch")
+    addToggle("Eggs", "Auto Sell Eggs",      false, "autoSellEggs")
+    addToggle("Eggs", "Auto Equip Best",     false, "autoEquipBest")
+    addToggle("Eggs", "Auto Fuse",           false, "autoFuse")
+    addToggle("Eggs", "Auto Sell Pets",      false, "autoSellPets")
+    addToggle("Eggs", "Never Sell Mutated",  true,  "neverSellMutated")
+    addToggle("Eggs", "Never Sell Equipped", true,  "neverSellEquipped")
+
+    -- ===== PROGRESS =====
+    addToggle("Progress", "Claim Offline",      false, "claimOffline")
+    addToggle("Progress", "Auto Upgrade",       false, "autoUpgrade")
+    addToggle("Progress", "Auto Treadmill",     false, "autoTreadmill")
+    addToggle("Progress", "Auto Claim Index",   false, "autoClaimIndex")
+    addToggle("Progress", "Auto Group Reward",  false, "autoGroupReward")
+    addToggle("Progress", "Auto Buy Trail",     false, "autoBuyTrail")
+    addToggle("Progress", "Auto Equip Trail",   false, "autoEquipTrail")
+
+    -- ===== CHARACTER =====
+    addToggle("Character", "Speed Boost",       false, "speedOn")
+    addSlider("Character", "Walk Speed",        16, 500, 32, "walkSpeed", "")
+    addToggle("Character", "Infinite Jump",     false, "infJump")
+    addToggle("Character", "Noclip",            false, "noclip")
+    addToggle("Character", "Fly",               false, "fly")
+    addSlider("Character", "Fly Speed",         10, 400, 32, "flySpeed", "")
+    addToggle("Character", "Anti AFK",          true,  "antiAfk")
+
+    -- ===== Implementations =====
+    local function getHum()
+        local char = LP.Character
+        return char and char:FindFirstChildOfClass("Humanoid"), char
+    end
+
+    RunService.RenderStepped:Connect(function()
+        if not S.running or not S.speedOn then return end
+        local hum = getHum()
+        if hum and hum.WalkSpeed ~= S.walkSpeed then
+            hum.WalkSpeed = S.walkSpeed
+        end
+    end)
+
+    UIS.JumpRequest:Connect(function()
+        if not S.running or not S.infJump then return end
+        local hum = getHum()
+        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end)
+
+    RunService.Stepped:Connect(function()
+        if not S.running or not S.noclip then return end
+        local _, char = getHum()
+        if not char then return end
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") and part.CanCollide then
+                part.CanCollide = false
+            end
+        end
+    end)
+
+    RunService.RenderStepped:Connect(function(dt)
+        if not S.running or not S.fly then return end
+        local hum, char = getHum()
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local cam = workspace.CurrentCamera
+        if not (hum and root and cam) then return end
+        hum.PlatformStand = true
+        local dir = Vector3.zero
+        if UIS:IsKeyDown(Enum.KeyCode.W) then dir = dir + cam.CFrame.LookVector end
+        if UIS:IsKeyDown(Enum.KeyCode.S) then dir = dir - cam.CFrame.LookVector end
+        if UIS:IsKeyDown(Enum.KeyCode.A) then dir = dir - cam.CFrame.RightVector end
+        if UIS:IsKeyDown(Enum.KeyCode.D) then dir = dir + cam.CFrame.RightVector end
+        if UIS:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0,1,0) end
+        if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - Vector3.new(0,1,0) end
+        root.AssemblyLinearVelocity = Vector3.zero
+        if dir.Magnitude > 0 then
+            root.CFrame = root.CFrame + dir.Unit * S.flySpeed * dt
+        end
+    end)
+
+    LP.Idled:Connect(function()
+        if not S.running or not S.antiAfk then return end
+        pcall(function()
+            VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+            task.wait(0.1)
+            VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+        end)
+    end)
+
+    -- Remote discovery
+    local Remotes = {}
+    local function findRemote(name)
+        for _, d in ipairs(ReplicatedStorage:GetDescendants()) do
+            if (d:IsA("RemoteEvent") or d:IsA("RemoteFunction")) and string.find(d.Name, name, 1, true) then
+                return d
+            end
+        end
+        return nil
+    end
+    Remotes.Carry        = findRemote("AskFieldEggCarry")
+    Remotes.Place        = findRemote("AskPlaceEgg")
+    Remotes.Snapshot     = findRemote("AskFieldEggSnapshot")
+    Remotes.EquipBest    = findRemote("WearBest") or findRemote("EQUIP_BEST")
+    Remotes.SellAsset    = findRemote("SellPet") or findRemote("SELL_ASSET")
+    Remotes.BaseUpgrade  = findRemote("AskBaseTierRaise") or findRemote("BaseUpgrade")
+    Remotes.TreadmillUp  = findRemote("AskTierRaise")
+    Remotes.TreadmillOn  = findRemote("AskWearStill")
+    Remotes.TreadmillOff = findRemote("AskDoff")
+    Remotes.ClaimIndex   = findRemote("AskRedeemAll")
+    Remotes.FuseReveal   = findRemote("FinishReveal")
+    Remotes.FuseAck      = findRemote("ConfirmBriefing")
+    Remotes.FuseLoad     = findRemote("LoadPet")
+    Remotes.FuseStart    = findRemote("BeginFuse")
+    Remotes.TrailBuy     = findRemote("AskPurchase")
+    Remotes.TrailWear    = findRemote("AskChoose")
+    Remotes.OfflineGet   = findRemote("FetchSummary")
+    Remotes.OfflineClaim = findRemote("AskCollect")
+    Remotes.GroupReward  = findRemote("RedeemPerk")
+
+    local function fire(remote, ...)
+        if not remote then return end
+        if remote:IsA("RemoteEvent") then
+            pcall(function() remote:FireServer(...) end)
+        elseif remote:IsA("RemoteFunction") then
+            pcall(function() remote:InvokeServer(...) end)
+        end
+    end
+
+    task.spawn(function()
+        while S.running do
+            task.wait(0.5)
+            if S.autofarm and Remotes.Snapshot then fire(Remotes.Snapshot) end
+        end
+    end)
+
+    task.spawn(function()
+        while S.running do
+            task.wait(1)
+            if S.autoEquipBest and Remotes.EquipBest then fire(Remotes.EquipBest) end
+        end
+    end)
+
+    task.spawn(function()
+        while S.running do
+            task.wait(5)
+            if S.autoClaimIndex and Remotes.ClaimIndex then fire(Remotes.ClaimIndex) end
+            if S.claimOffline and Remotes.OfflineGet and Remotes.OfflineClaim then
+                local summary = nil
+                pcall(function() summary = Remotes.OfflineGet:InvokeServer() end)
+                if type(summary) == "table" and (tonumber(summary.ClaimableAmount) or 0) > 0 then
+                    fire(Remotes.OfflineClaim)
+                end
+            end
+            if S.autoUpgrade and Remotes.BaseUpgrade then fire(Remotes.BaseUpgrade) end
+        end
+    end)
+
+    G.__SANTOS_SHUTDOWN = function()
+        S.running = false
+        pcall(function() C.SG:Destroy() end)
+        G.__SANTOS_SHUTDOWN = nil
+    end
+
+    tab("Farm")
+
+    return parentName
+end, function(err)
+    return tostring(err)
+end)
+
+-- ===== Result =====
+if buildOk then
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Santos Hub",
+            Text = "Loaded. Parent: " .. tostring(buildErr),
+            Duration = 3
+        })
+    end)
+    print("[Santos Hub] Loaded. Parent: " .. tostring(buildErr))
+else
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Santos Hub — Error",
+            Text = tostring(buildErr),
+            Duration = 10
+        })
+    end)
+    warn("[Santos Hub] Build failed: " .. tostring(buildErr))
+end
