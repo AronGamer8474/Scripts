@@ -1,0 +1,631 @@
+-- language: Lua, file: SantosLib.lua
+-- Drop-in replacement for Santos Hub's expected UI library.
+-- Same API: CreateWindow, CreateTab, AddSection, AddToggle, AddButton,
+-- AddDropdown, AddSlider, AddInput, AddParagraph, AddSubSection, AddLabel,
+-- AddConfigPanel, Tag, Notify. Controls have Set/Get/SetTitle/SetDesc/Refresh.
+
+local SantosLib = (function()
+    local C = {
+        surface = Color3.fromRGB(28,22,18),
+        surfaceHi = Color3.fromRGB(44,34,26),
+        stroke = Color3.fromRGB(74,52,40),
+        accent = Color3.fromRGB(34,139,34),
+        accentB = Color3.fromRGB(60,170,60),
+        text = Color3.fromRGB(249,231,246),
+        btnText = Color3.fromRGB(247,198,208),
+        muted = Color3.fromRGB(140,120,100),
+        btnBg = Color3.fromRGB(42,32,24),
+        inputBg = Color3.fromRGB(20,15,11),
+        switchOff = Color3.fromRGB(55,44,35),
+        obsTop = Color3.fromRGB(22,18,14),
+        obsMid = Color3.fromRGB(16,12,9),
+    }
+    local function mk(c,p,par)
+        local i = Instance.new(c)
+        for k,v in pairs(p) do pcall(function() i[k]=v end) end
+        if par then i.Parent = par end
+        return i
+    end
+    local function corner(p,r) return mk("UICorner",{CornerRadius=UDim.new(0,r or 6)},p) end
+    local function stroke(p,c,t) return mk("UIStroke",{Color=c or C.stroke,Thickness=t or 1,
+        ApplyStrokeMode=Enum.ApplyStrokeMode.Border},p) end
+    local function getParent()
+        local ok,h = pcall(function() return gethui and gethui() end)
+        if ok and h then return h end
+        local ok2,cg = pcall(function() return game:GetService("CoreGui") end)
+        if ok2 and cg then return cg end
+        return game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui",5)
+    end
+
+    local lib = {}
+
+    function lib:CreateWindow(cfg)
+        cfg = cfg or {}
+        local parent = getParent()
+        for _,f in ipairs(parent:GetChildren()) do
+            if f:IsA("ScreenGui") and f.Name == "SantosHubUI" then
+                pcall(function() f:Destroy() end)
+            end
+        end
+        local sg = mk("ScreenGui",{Name="SantosHubUI",ResetOnSpawn=false,
+            IgnoreGuiInset=true,DisplayOrder=99999,
+            ZIndexBehavior=Enum.ZIndexBehavior.Sibling},parent)
+        local main = mk("Frame",{Name="Main",
+            Size=cfg.Size or UDim2.fromOffset(700,470),
+            Position=UDim2.fromScale(0.5,0.5),
+            AnchorPoint=Vector2.new(0.5,0.5),
+            BackgroundColor3=C.surface,BorderSizePixel=0,
+            Active=true,Draggable=true},sg)
+        corner(main,12); stroke(main,C.stroke,1)
+
+        local bar = mk("Frame",{Size=UDim2.new(1,0,0,48),
+            BackgroundColor3=C.obsTop,BorderSizePixel=0},main)
+        corner(bar,12)
+        mk("Frame",{Size=UDim2.new(1,0,0,14),
+            Position=UDim2.new(0,0,1,-14),
+            BackgroundColor3=C.obsTop,BorderSizePixel=0},bar)
+
+        local title = mk("TextLabel",{Position=UDim2.fromOffset(46,6),
+            Size=UDim2.new(1,-200,0,18),BackgroundTransparency=1,
+            Font=Enum.Font.GothamBold,TextSize=14,TextColor3=C.text,
+            TextXAlignment=Enum.TextXAlignment.Left,
+            Text=cfg.Title or "Window"},bar)
+        if cfg.SubTitle then
+            mk("TextLabel",{Position=UDim2.fromOffset(46,24),
+                Size=UDim2.new(1,-200,0,14),BackgroundTransparency=1,
+                Font=Enum.Font.Gotham,TextSize=11,TextColor3=C.muted,
+                TextXAlignment=Enum.TextXAlignment.Left,
+                Text=cfg.SubTitle},bar)
+        end
+        if cfg.Logo then
+            mk("ImageLabel",{Position=UDim2.fromOffset(12,12),
+                Size=UDim2.fromOffset(24,24),BackgroundTransparency=1,
+                Image=cfg.Logo,ScaleType=Enum.ScaleType.Fit},bar)
+        end
+        local close = mk("TextButton",{Size=UDim2.fromOffset(28,28),
+            Position=UDim2.new(1,-38,0,10),
+            BackgroundColor3=C.btnBg,BorderSizePixel=0,
+            Text="X",Font=Enum.Font.GothamBold,TextSize=12,
+            TextColor3=C.btnText,AutoButtonColor=false},bar)
+        corner(close,6)
+
+        local sidebar = mk("Frame",{Position=UDim2.fromOffset(0,48),
+            Size=UDim2.new(0,160,1,-48),
+            BackgroundColor3=C.obsMid,BorderSizePixel=0},main)
+        mk("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,
+            Padding=UDim.new(0,6)},sidebar)
+        mk("UIPadding",{PaddingTop=UDim.new(0,10),
+            PaddingLeft=UDim.new(0,8),
+            PaddingRight=UDim.new(0,8)},sidebar)
+
+        local content = mk("Frame",{Position=UDim2.fromOffset(160,48),
+            Size=UDim2.new(1,-160,1,-48),
+            BackgroundTransparency=1,BorderSizePixel=0},main)
+
+        local W = {ScreenGui=sg,Title=cfg.Title,_main=main,
+            _sidebar=sidebar,_content=content,_tabs={},_selected=nil,_order=0}
+        close.MouseButton1Click:Connect(function() sg.Enabled = false end)
+
+        if cfg.ToggleKey then
+            game:GetService("UserInputService").InputBegan:Connect(function(i,gp)
+                if gp then return end
+                if i.KeyCode == cfg.ToggleKey then
+                    main.Visible = not main.Visible
+                end
+            end)
+        end
+
+        function W:CreateTab(tcfg)
+            tcfg = tcfg or {}
+            self._order = self._order + 1
+            local ord = self._order
+            local btn = mk("TextButton",{Size=UDim2.new(1,0,0,34),
+                BackgroundColor3=C.btnBg,BackgroundTransparency=0.55,
+                BorderSizePixel=0,Text="   "..(tcfg.Title or "Tab"),
+                Font=Enum.Font.GothamBold,TextSize=12,TextColor3=C.btnText,
+                TextXAlignment=Enum.TextXAlignment.Left,
+                AutoButtonColor=false,LayoutOrder=ord},self._sidebar)
+            corner(btn,6)
+            local btnStroke = stroke(btn,C.accent,1)
+            btnStroke.Transparency = 1
+
+            local page = mk("Frame",{Size=UDim2.fromScale(1,1),
+                BackgroundTransparency=1,BorderSizePixel=0,Visible=false},self._content)
+            local scroll = mk("ScrollingFrame",{Size=UDim2.fromScale(1,1),
+                BackgroundTransparency=1,BorderSizePixel=0,
+                CanvasSize=UDim2.new(0,0,0,0),
+                AutomaticCanvasSize=Enum.AutomaticSize.Y,
+                ScrollBarThickness=3,ScrollBarImageColor3=C.accent},page)
+            local left = mk("Frame",{Position=UDim2.fromOffset(10,10),
+                Size=UDim2.new(0.5,-15,0,0),BackgroundTransparency=1,
+                BorderSizePixel=0,AutomaticSize=Enum.AutomaticSize.Y},scroll)
+            mk("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,
+                Padding=UDim.new(0,8)},left)
+            local right = mk("Frame",{Position=UDim2.new(0.5,5,0,10),
+                Size=UDim2.new(0.5,-15,0,0),BackgroundTransparency=1,
+                BorderSizePixel=0,AutomaticSize=Enum.AutomaticSize.Y},scroll)
+            mk("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,
+                Padding=UDim.new(0,8)},right)
+
+            local T = {Title=tcfg.Title,_W=self,_btn=btn,_stroke=btnStroke,
+                _page=page,_left=left,_right=right,_secOrder=0}
+
+            local function select()
+                for _,t in ipairs(self._tabs) do
+                    t._page.Visible = false
+                    t._btn.BackgroundTransparency = 0.55
+                    t._stroke.Transparency = 1
+                end
+                page.Visible = true
+                btn.BackgroundTransparency = 0.15
+                btnStroke.Transparency = 0
+                self._selected = T
+            end
+            btn.MouseButton1Click:Connect(select)
+            table.insert(self._tabs, T)
+            if not self._selected then select() end
+
+            function T:AddSection(scfg)
+                scfg = scfg or {}
+                local col = (scfg.Side == "Right") and self._right or self._left
+                self._secOrder = self._secOrder + 1
+                local outer = mk("Frame",{Size=UDim2.new(1,0,0,32),
+                    BackgroundColor3=C.surface,BorderSizePixel=0,
+                    AutomaticSize=Enum.AutomaticSize.Y,
+                    LayoutOrder=self._secOrder},col)
+                corner(outer,8); stroke(outer,C.stroke,1)
+                local header = mk("TextButton",{Size=UDim2.new(1,0,0,32),
+                    BackgroundTransparency=1,BorderSizePixel=0,
+                    Text="   "..(scfg.Title or ""),
+                    Font=Enum.Font.GothamBold,TextSize=13,
+                    TextColor3=C.text,TextXAlignment=Enum.TextXAlignment.Left,
+                    AutoButtonColor=false},outer)
+                local inner = mk("Frame",{Position=UDim2.new(0,0,0,32),
+                    Size=UDim2.new(1,0,0,0),BackgroundTransparency=1,
+                    BorderSizePixel=0,AutomaticSize=Enum.AutomaticSize.Y,
+                    Visible=scfg.Open ~= false},outer)
+                mk("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,
+                    Padding=UDim.new(0,6)},inner)
+                mk("UIPadding",{PaddingTop=UDim.new(0,4),
+                    PaddingBottom=UDim.new(0,8),
+                    PaddingLeft=UDim.new(0,6),
+                    PaddingRight=UDim.new(0,6)},inner)
+                header.MouseButton1Click:Connect(function()
+                    inner.Visible = not inner.Visible
+                end)
+
+                local S = {_inner=inner,_n=0}
+                function S:SetTitle(s) header.Text = "   "..tostring(s or "") end
+                function S:SetDesc(s) end
+                local function nextOrd() S._n = S._n + 1 return S._n end
+
+                function S:AddToggle(cfg)
+                    cfg = cfg or {}
+                    local val = cfg.Default == true
+                    local row = mk("Frame",{Size=UDim2.new(1,0,0,44),
+                        BackgroundColor3=C.surfaceHi,BackgroundTransparency=0.3,
+                        BorderSizePixel=0,LayoutOrder=nextOrd()},inner)
+                    corner(row,6)
+                    local tl = mk("TextLabel",{Position=UDim2.fromOffset(10,4),
+                        Size=UDim2.new(1,-70,0,16),BackgroundTransparency=1,
+                        Font=Enum.Font.GothamBold,TextSize=12,TextColor3=C.text,
+                        TextXAlignment=Enum.TextXAlignment.Left,
+                        Text=cfg.Title or ""},row)
+                    local dl = mk("TextLabel",{Position=UDim2.fromOffset(10,22),
+                        Size=UDim2.new(1,-70,0,16),BackgroundTransparency=1,
+                        Font=Enum.Font.Gotham,TextSize=10,TextColor3=C.muted,
+                        TextXAlignment=Enum.TextXAlignment.Left,
+                        TextTruncate=Enum.TextTruncate.AtEnd,
+                        Text=cfg.Content or cfg.Description or ""},row)
+                    local sw = mk("Frame",{Position=UDim2.new(1,-52,0.5,-9),
+                        Size=UDim2.fromOffset(42,18),
+                        BackgroundColor3=val and C.accent or C.switchOff,
+                        BorderSizePixel=0},row)
+                    corner(sw,9)
+                    local knob = mk("Frame",{Size=UDim2.fromOffset(14,14),
+                        Position=val and UDim2.new(1,-16,0.5,-7) or UDim2.fromOffset(2,2),
+                        BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0},sw)
+                    corner(knob,7)
+                    local zone = mk("TextButton",{Size=UDim2.fromScale(1,1),
+                        BackgroundTransparency=1,Text="",AutoButtonColor=false},row)
+                    local O = {UIElements={Title=tl,Desc=dl,Main=row}}
+                    local function apply(v)
+                        val = v and true or false
+                        sw.BackgroundColor3 = val and C.accent or C.switchOff
+                        knob.Position = val and UDim2.new(1,-16,0.5,-7) or UDim2.fromOffset(2,2)
+                    end
+                    function O:Set(v) apply(v) if cfg.Callback then pcall(cfg.Callback,val) end end
+                    function O:Get() return val end
+                    function O:SetTitle(s) tl.Text = tostring(s or "") end
+                    function O:SetDesc(s) dl.Text = tostring(s or "") end
+                    zone.MouseButton1Click:Connect(function()
+                        apply(not val)
+                        if cfg.Callback then pcall(cfg.Callback,val) end
+                    end)
+                    apply(val)
+                    return O
+                end
+
+                function S:AddButton(cfg)
+                    cfg = cfg or {}
+                    local row = mk("Frame",{Size=UDim2.new(1,0,0,44),
+                        BackgroundColor3=C.surfaceHi,BackgroundTransparency=0.3,
+                        BorderSizePixel=0,LayoutOrder=nextOrd()},inner)
+                    corner(row,6)
+                    local tl = mk("TextLabel",{Position=UDim2.fromOffset(10,4),
+                        Size=UDim2.new(1,-20,0,16),BackgroundTransparency=1,
+                        Font=Enum.Font.GothamBold,TextSize=12,TextColor3=C.text,
+                        TextXAlignment=Enum.TextXAlignment.Left,
+                        Text=cfg.Title or ""},row)
+                    local dl = mk("TextLabel",{Position=UDim2.fromOffset(10,22),
+                        Size=UDim2.new(1,-20,0,16),BackgroundTransparency=1,
+                        Font=Enum.Font.Gotham,TextSize=10,TextColor3=C.muted,
+                        TextXAlignment=Enum.TextXAlignment.Left,
+                        TextTruncate=Enum.TextTruncate.AtEnd,
+                        Text=cfg.Content or cfg.Description or ""},row)
+                    local zone = mk("TextButton",{Size=UDim2.fromScale(1,1),
+                        BackgroundTransparency=1,Text="",AutoButtonColor=false},row)
+                    zone.MouseEnter:Connect(function() row.BackgroundTransparency = 0 end)
+                    zone.MouseLeave:Connect(function() row.BackgroundTransparency = 0.3 end)
+                    zone.MouseButton1Click:Connect(function()
+                        if cfg.Callback then pcall(cfg.Callback) end
+                    end)
+                    local O = {UIElements={Title=tl,Desc=dl,Main=row}}
+                    function O:SetTitle(s) tl.Text = tostring(s or "") end
+                    function O:SetDesc(s) dl.Text = tostring(s or "") end
+                    return O
+                end
+
+                function S:AddDropdown(cfg)
+                    cfg = cfg or {}
+                    local multi = cfg.Multi == true
+                    local opts = cfg.Options or {}
+                    local sel
+                    if multi then
+                        sel = {}
+                        if type(cfg.Default) == "table" then
+                            for _,v in ipairs(cfg.Default) do sel[v] = true end
+                        end
+                    else
+                        sel = (type(cfg.Default) == "table") and cfg.Default[1] or cfg.Default
+                    end
+                    local row = mk("Frame",{Size=UDim2.new(1,0,0,44),
+                        BackgroundColor3=C.surfaceHi,BackgroundTransparency=0.3,
+                        BorderSizePixel=0,LayoutOrder=nextOrd()},inner)
+                    corner(row,6)
+                    local tl = mk("TextLabel",{Position=UDim2.fromOffset(10,4),
+                        Size=UDim2.new(1,-20,0,16),BackgroundTransparency=1,
+                        Font=Enum.Font.GothamBold,TextSize=12,TextColor3=C.text,
+                        TextXAlignment=Enum.TextXAlignment.Left,
+                        Text=cfg.Title or ""},row)
+                    local curText = "None"
+                    if multi then
+                        local l = {}
+                        for _,v in ipairs(cfg.Default or {}) do l[#l+1] = tostring(v) end
+                        if #l > 0 then curText = table.concat(l, ", ") end
+                    elseif sel then curText = tostring(sel) end
+                    local dl = mk("TextLabel",{Position=UDim2.fromOffset(10,22),
+                        Size=UDim2.new(1,-20,0,16),BackgroundTransparency=1,
+                        Font=Enum.Font.Gotham,TextSize=10,TextColor3=C.accentB,
+                        TextXAlignment=Enum.TextXAlignment.Left,
+                        TextTruncate=Enum.TextTruncate.AtEnd,
+                        Text=curText},row)
+                    local zone = mk("TextButton",{Size=UDim2.fromScale(1,1),
+                        BackgroundTransparency=1,Text="",AutoButtonColor=false},row)
+                    local popup = nil
+                    local function closePop() if popup then popup:Destroy() popup = nil end end
+                    local function rebuild()
+                        if popup then popup:Destroy() end
+                        popup = mk("ScrollingFrame",{
+                            Size=UDim2.fromOffset(200,math.min(220,#opts*26+8)),
+                            Position=UDim2.new(0,
+                                row.AbsolutePosition.X - main.AbsolutePosition.X + 20,0,
+                                row.AbsolutePosition.Y - main.AbsolutePosition.Y + 46),
+                            BackgroundColor3=C.obsMid,BorderSizePixel=0,
+                            CanvasSize=UDim2.new(0,0,0,#opts*26),
+                            ScrollBarThickness=2,ZIndex=60},main)
+                        corner(popup,6); stroke(popup,C.stroke,1)
+                        for i,o in ipairs(opts) do
+                            local ob = mk("TextButton",{
+                                Size=UDim2.new(1,-4,0,24),
+                                Position=UDim2.fromOffset(2,(i-1)*26+2),
+                                BackgroundColor3=C.btnBg,
+                                BackgroundTransparency=(multi and sel[o]) and 0.3 or 0.85,
+                                BorderSizePixel=0,Text="   "..tostring(o),
+                                Font=Enum.Font.Gotham,TextSize=11,
+                                TextColor3=C.text,
+                                TextXAlignment=Enum.TextXAlignment.Left,
+                                AutoButtonColor=false,ZIndex=61},popup)
+                            corner(ob,4)
+                            ob.MouseButton1Click:Connect(function()
+                                if multi then
+                                    sel[o] = not sel[o]
+                                    local l = {}
+                                    for _,v in ipairs(opts) do if sel[v] then l[#l+1]=tostring(v) end end
+                                    curText = #l > 0 and table.concat(l,", ") or "None"
+                                    dl.Text = curText
+                                    local out = {}
+                                    for _,v in ipairs(opts) do if sel[v] then out[#out+1]=v end end
+                                    if cfg.Callback then pcall(cfg.Callback,out) end
+                                    closePop(); rebuild()
+                                else
+                                    sel = o; curText = tostring(o); dl.Text = curText
+                                    closePop()
+                                    if cfg.Callback then pcall(cfg.Callback,o) end
+                                end
+                            end)
+                        end
+                    end
+                    zone.MouseButton1Click:Connect(function()
+                        if popup then closePop() else rebuild() end
+                    end)
+                    local O = {UIElements={Title=tl,Desc=dl,Main=row}}
+                    function O:Get()
+                        if multi then
+                            local out = {}
+                            for _,v in ipairs(opts) do if sel[v] then out[#out+1]=v end end
+                            return out
+                        end
+                        return sel
+                    end
+                    function O:Set(v)
+                        if multi then
+                            if type(v) == "table" then
+                                sel = {}
+                                for _,x in ipairs(v) do sel[x] = true end
+                                local l = {}
+                                for _,x in ipairs(opts) do if sel[x] then l[#l+1]=tostring(x) end end
+                                curText = #l > 0 and table.concat(l,", ") or "None"
+                            end
+                        else
+                            sel = v; curText = tostring(v)
+                        end
+                        dl.Text = curText
+                    end
+                    function O:Refresh(newOpts,clear)
+                        opts = newOpts or opts
+                        if clear then
+                            if multi then sel = {} else sel = nil end
+                            curText = "None"; dl.Text = curText
+                        end
+                        closePop()
+                    end
+                    function O:SetTitle(s) tl.Text = tostring(s or "") end
+                    function O:SetDesc(s) dl.Text = tostring(s or "") end
+                    return O
+                end
+
+                function S:AddSlider(cfg)
+                    cfg = cfg or {}
+                    local minV,maxV,val
+                    if type(cfg.Value) == "table" then
+                        minV = cfg.Value.Min or 0
+                        maxV = cfg.Value.Max or 100
+                        val  = cfg.Value.Default or minV
+                    end
+                    minV = cfg.Min or minV or 0
+                    maxV = cfg.Max or maxV or 100
+                    val  = cfg.Default or val or minV
+                    if type(val) == "table" then val = val.Default or val.Min or minV end
+                    local inc = cfg.Increment or 1
+                    local row = mk("Frame",{Size=UDim2.new(1,0,0,46),
+                        BackgroundColor3=C.surfaceHi,BackgroundTransparency=0.3,
+                        BorderSizePixel=0,LayoutOrder=nextOrd()},inner)
+                    corner(row,6)
+                    local tl = mk("TextLabel",{Position=UDim2.fromOffset(10,4),
+                        Size=UDim2.new(1,-60,0,16),BackgroundTransparency=1,
+                        Font=Enum.Font.GothamBold,TextSize=12,TextColor3=C.text,
+                        TextXAlignment=Enum.TextXAlignment.Left,
+                        Text=cfg.Title or ""},row)
+                    local vl = mk("TextLabel",{Position=UDim2.new(1,-58,0,4),
+                        Size=UDim2.fromOffset(50,16),BackgroundTransparency=1,
+                        Font=Enum.Font.GothamBold,TextSize=11,TextColor3=C.accentB,
+                        TextXAlignment=Enum.TextXAlignment.Right,
+                        Text=tostring(math.floor(val))},row)
+                    local track = mk("Frame",{Position=UDim2.fromOffset(10,30),
+                        Size=UDim2.new(1,-20,0,6),
+                        BackgroundColor3=C.switchOff,BorderSizePixel=0},row)
+                    corner(track,3)
+                    local fill = mk("Frame",{
+                        Size=UDim2.new((val-minV)/math.max(0.001,maxV-minV),0,1,0),
+                        BackgroundColor3=C.accent,BorderSizePixel=0},track)
+                    corner(fill,3)
+                    local drag = mk("TextButton",{Size=UDim2.new(1,0,1,20),
+                        Position=UDim2.fromOffset(0,-7),
+                        BackgroundTransparency=1,Text="",AutoButtonColor=false},track)
+                    local function setV(v)
+                        val = math.clamp(v,minV,maxV)
+                        fill.Size = UDim2.new((val-minV)/math.max(0.001,maxV-minV),0,1,0)
+                        vl.Text = tostring(math.floor(val))
+                        if cfg.Callback then pcall(cfg.Callback,val) end
+                    end
+                    local dragging = false
+                    drag.InputBegan:Connect(function(i)
+                        if i.UserInputType == Enum.UserInputType.MouseButton1
+                            or i.UserInputType == Enum.UserInputType.Touch then
+                            dragging = true
+                        end
+                    end)
+                    game:GetService("UserInputService").InputChanged:Connect(function(i)
+                        if not dragging then return end
+                        if i.UserInputType ~= Enum.UserInputType.MouseMovement
+                            and i.UserInputType ~= Enum.UserInputType.Touch then return end
+                        local rx = i.Position.X - track.AbsolutePosition.X
+                        local sc = math.clamp(rx/math.max(1,track.AbsoluteSize.X),0,1)
+                        local raw = minV + sc*(maxV-minV)
+                        setV(math.floor(raw/inc+0.5)*inc)
+                    end)
+                    game:GetService("UserInputService").InputEnded:Connect(function(i)
+                        if i.UserInputType == Enum.UserInputType.MouseButton1
+                            or i.UserInputType == Enum.UserInputType.Touch then
+                            dragging = false
+                        end
+                    end)
+                    local O = {UIElements={Title=tl,Main=row}}
+                    function O:Get() return val end
+                    function O:Set(v) setV(v) end
+                    function O:SetTitle(s) tl.Text = tostring(s or "") end
+                    function O:SetDesc(s) end
+                    return O
+                end
+
+                function S:AddInput(cfg)
+                    cfg = cfg or {}
+                    local row = mk("Frame",{Size=UDim2.new(1,0,0,50),
+                        BackgroundColor3=C.surfaceHi,BackgroundTransparency=0.3,
+                        BorderSizePixel=0,LayoutOrder=nextOrd()},inner)
+                    corner(row,6)
+                    local tl = mk("TextLabel",{Position=UDim2.fromOffset(10,4),
+                        Size=UDim2.new(1,-20,0,16),BackgroundTransparency=1,
+                        Font=Enum.Font.GothamBold,TextSize=12,TextColor3=C.text,
+                        TextXAlignment=Enum.TextXAlignment.Left,
+                        Text=cfg.Title or ""},row)
+                    local box = mk("TextBox",{Position=UDim2.fromOffset(10,22),
+                        Size=UDim2.new(1,-20,0,22),
+                        BackgroundColor3=C.inputBg,BorderSizePixel=0,
+                        Font=Enum.Font.Gotham,TextSize=12,TextColor3=C.text,
+                        PlaceholderText=cfg.Placeholder or "",
+                        PlaceholderColor3=C.muted,Text=cfg.Default or "",
+                        TextXAlignment=Enum.TextXAlignment.Left,
+                        ClearTextOnFocus=false},row)
+                    corner(box,4); stroke(box,C.stroke,1)
+                    box.FocusLost:Connect(function()
+                        if cfg.Callback then pcall(cfg.Callback,box.Text) end
+                    end)
+                    local O = {UIElements={Title=tl,Main=row,TextBox=box}}
+                    function O:Get() return box.Text end
+                    function O:Set(v) box.Text = tostring(v or "") end
+                    function O:SetTitle(s) tl.Text = tostring(s or "") end
+                    function O:SetDesc(s) end
+                    return O
+                end
+
+                function S:AddParagraph(cfg)
+                    cfg = cfg or {}
+                    local row = mk("Frame",{Size=UDim2.new(1,0,0,30),
+                        BackgroundColor3=C.surfaceHi,BackgroundTransparency=0.55,
+                        BorderSizePixel=0,
+                        AutomaticSize=Enum.AutomaticSize.Y,
+                        LayoutOrder=nextOrd()},inner)
+                    corner(row,6)
+                    local tl = mk("TextLabel",{Position=UDim2.fromOffset(10,4),
+                        Size=UDim2.new(1,-20,0,16),BackgroundTransparency=1,
+                        Font=Enum.Font.GothamBold,TextSize=12,TextColor3=C.text,
+                        TextXAlignment=Enum.TextXAlignment.Left,RichText=true,
+                        Text=cfg.Title or ""},row)
+                    local dl = mk("TextLabel",{Position=UDim2.fromOffset(10,20),
+                        Size=UDim2.new(1,-20,0,16),BackgroundTransparency=1,
+                        Font=Enum.Font.Gotham,TextSize=10,TextColor3=C.muted,
+                        TextXAlignment=Enum.TextXAlignment.Left,RichText=true,
+                        TextWrapped=true,AutomaticSize=Enum.AutomaticSize.Y,
+                        Text=cfg.Content or ""},row)
+                    local O = {UIElements={Title=tl,Desc=dl,Main=row}}
+                    function O:Set(c)
+                        if type(c) == "table" then
+                            if c.Title ~= nil then tl.Text = tostring(c.Title) end
+                            if c.Content ~= nil then dl.Text = tostring(c.Content) end
+                        else
+                            dl.Text = tostring(c or "")
+                        end
+                    end
+                    function O:SetTitle(s) tl.Text = tostring(s or "") end
+                    function O:SetDesc(s) dl.Text = tostring(s or "") end
+                    return O
+                end
+
+                function S:AddSubSection(cfg)
+                    cfg = cfg or {}
+                    local row = mk("Frame",{Size=UDim2.new(1,0,0,20),
+                        BackgroundTransparency=1,BorderSizePixel=0,
+                        LayoutOrder=nextOrd()},inner)
+                    mk("TextLabel",{Size=UDim2.fromScale(1,1),
+                        BackgroundTransparency=1,Font=Enum.Font.GothamBold,
+                        TextSize=11,TextColor3=C.accentB,
+                        TextXAlignment=Enum.TextXAlignment.Left,
+                        Text="— "..(cfg.Title or "")},row)
+                    return {}
+                end
+
+                function S:AddConfigPanel(cfg) return {} end
+
+                function S:AddLabel(cfg)
+                    cfg = cfg or {}
+                    local row = mk("Frame",{Size=UDim2.new(1,0,0,20),
+                        BackgroundTransparency=1,BorderSizePixel=0,
+                        LayoutOrder=nextOrd()},inner)
+                    local lbl = mk("TextLabel",{Size=UDim2.fromScale(1,1),
+                        BackgroundTransparency=1,Font=Enum.Font.Gotham,
+                        TextSize=11,TextColor3=C.muted,
+                        TextXAlignment=Enum.TextXAlignment.Left,
+                        Text=cfg.Title or ""},row)
+                    local O = {UIElements={Title=lbl,Main=row}}
+                    function O:Set(t) lbl.Text = tostring(t or "") end
+                    function O:SetTitle(s) lbl.Text = tostring(s or "") end
+                    function O:SetDesc(s) end
+                    return O
+                end
+
+                return S
+            end
+            return T
+        end
+
+        function W:Tag(cfg)
+            cfg = cfg or {}
+            local tag = mk("TextLabel",{Size=UDim2.new(1,0,0,26),
+                BackgroundColor3=cfg.Color or C.accent,
+                BackgroundTransparency=0.35,BorderSizePixel=0,
+                Font=Enum.Font.GothamBold,TextSize=11,
+                TextColor3=C.text,Text=cfg.Title or "",LayoutOrder=999},self._sidebar)
+            corner(tag,6)
+            local O = {}
+            function O:SetTitle(s) tag.Text = tostring(s or "") end
+            function O:SetColor(c) tag.BackgroundColor3 = c end
+            function O:Set(c)
+                if type(c) == "table" then
+                    if c.Title then tag.Text = c.Title end
+                    if c.Color then tag.BackgroundColor3 = c.Color end
+                end
+            end
+            return O
+        end
+
+        function W:Destroy() pcall(function() sg:Destroy() end) end
+        return W
+    end
+
+    function lib:Notify(cfg)
+        cfg = cfg or {}
+        local parent = getParent()
+        local sg = parent:FindFirstChild("SantosHubNotify")
+        if not sg then
+            sg = mk("ScreenGui",{Name="SantosHubNotify",ResetOnSpawn=false,
+                IgnoreGuiInset=true,DisplayOrder=999999,
+                ZIndexBehavior=Enum.ZIndexBehavior.Sibling},parent)
+        end
+        local idx = 0
+        for _ in ipairs(sg:GetChildren()) do idx = idx + 1 end
+        local box = mk("Frame",{Size=UDim2.fromOffset(280,64),
+            Position=UDim2.new(1,-300,0,20+idx*72),
+            BackgroundColor3=C.surface,BorderSizePixel=0},sg)
+        corner(box,8); stroke(box,C.accent,1)
+        mk("TextLabel",{Position=UDim2.fromOffset(12,6),
+            Size=UDim2.new(1,-24,0,18),BackgroundTransparency=1,
+            Font=Enum.Font.GothamBold,TextSize=12,TextColor3=C.text,
+            TextXAlignment=Enum.TextXAlignment.Left,
+            Text=cfg.Title or "Santos Hub"},box)
+        mk("TextLabel",{Position=UDim2.fromOffset(12,26),
+            Size=UDim2.new(1,-24,0,32),BackgroundTransparency=1,
+            Font=Enum.Font.Gotham,TextSize=10,TextColor3=C.muted,
+            TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,
+            TextYAlignment=Enum.TextYAlignment.Top,
+            Text=cfg.Content or ""},box)
+        task.delay(cfg.Duration or 4, function()
+            pcall(function() box:Destroy() end)
+        end)
+    end
+
+    return lib
+end)()
+
+return SantosLib
