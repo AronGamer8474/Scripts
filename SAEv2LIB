@@ -1357,13 +1357,20 @@ local function StartBackendLoop(this)
 							local id = tonumber(ann.id) or 0
 							if id > this.AnnSince then this.AnnSince = id end
 							if this.Announcements then
-								Santos:Announce({
-									Title = ann.title,
-									Content = ann.text,
-									Duration = tonumber(ann.duration) or 15,
-									Sound = ann.sound,
-								})
-							end
+    local ann = ann  -- localise for the closure
+    task.spawn(function()
+        Elevate()
+        local ok, err = pcall(Santos.Announce, Santos, {
+            Title    = ann.title,
+            Content  = ann.text,
+            Duration = tonumber(ann.duration) or 15,
+            Sound    = ann.sound,
+        })
+        if not ok then
+            warn("[Santos] Announce failed:", err)
+        end
+    end)
+end
 						end
 					end
 				end
