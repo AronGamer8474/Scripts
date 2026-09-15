@@ -11243,25 +11243,29 @@ return (function(var974, ...)
 						end)()
 					end)
 					State["list"] = {
-						["strokeCol"] = ENV["Color3"]["fromRGB"](36, 36, 42),
-						["accent"] = ENV["Color3"]["fromRGB"](26, 147, 250),
-						["accentA"] = ENV["Color3"]["fromRGB"](19, 96, 250),
-						["accentB"] = ENV["Color3"]["fromRGB"](33, 198, 250),
-						["surface"] = ENV["Color3"]["fromRGB"](22, 22, 27),
-						["surfaceHi"] = ENV["Color3"]["fromRGB"](28, 28, 34),
-						["text"] = ENV["Color3"]["fromRGB"](235, 236, 245),
-						["btnText"] = ENV["Color3"]["fromRGB"](186, 184, 198),
-						["muted"] = ENV["Color3"]["fromRGB"](156, 154, 170),
-						["shadow"] = ENV["Color3"]["fromRGB"](4, 4, 8),
-						["obsTop"] = ENV["Color3"]["fromRGB"](18, 18, 24),
-						["obsMid"] = ENV["Color3"]["fromRGB"](12, 12, 16),
-						["obsLow"] = ENV["Color3"]["fromRGB"](10, 14, 26),
-						["btnBg"] = ENV["Color3"]["fromRGB"](30, 30, 36),
-						["btnHover"] = ENV["Color3"]["fromRGB"](44, 44, 52),
-						["inputBg"] = ENV["Color3"]["fromRGB"](14, 14, 18),
-						["switchOff"] = ENV["Color3"]["fromRGB"](42, 42, 48),
-						["good"] = ENV["Color3"]["fromRGB"](163, 230, 53),
-					}
+	["strokeCol"] = ENV["Color3"]["fromRGB"](58, 72, 52),       -- Stroke / bark edge
+	["accent"] = ENV["Color3"]["fromRGB"](232, 168, 188),       -- Accent / soft pink
+	["accentA"] = ENV["Color3"]["fromRGB"](168, 132, 96),       -- Wood / antler brown
+	["accentB"] = ENV["Color3"]["fromRGB"](92, 168, 108),      -- Leaf green
+
+	["surface"] = ENV["Color3"]["fromRGB"](24, 34, 28),        -- Card / muted pine
+	["surfaceHi"] = ENV["Color3"]["fromRGB"](32, 44, 36),      -- Element / mid leaf
+
+	["text"] = ENV["Color3"]["fromRGB"](232, 238, 228),        -- Pale leaf green-white
+	["btnText"] = ENV["Color3"]["fromRGB"](186, 188, 180),     -- Soft pale neutral
+	["muted"] = ENV["Color3"]["fromRGB"](168, 188, 162),       -- SubText / sage
+
+	["shadow"] = ENV["Color3"]["fromRGB"](4, 8, 6),            -- Deep forest shadow
+	["obsTop"] = ENV["Color3"]["fromRGB"](18, 26, 20),         -- Sidebar / topbar
+	["obsMid"] = ENV["Color3"]["fromRGB"](14, 22, 16),         -- Bottombar
+	["obsLow"] = ENV["Color3"]["fromRGB"](12, 18, 14),         -- Backdrop
+
+	["btnBg"] = ENV["Color3"]["fromRGB"](32, 44, 36),          -- Element
+	["btnHover"] = ENV["Color3"]["fromRGB"](42, 58, 46),       -- ElementHover
+	["inputBg"] = ENV["Color3"]["fromRGB"](14, 22, 16),        -- Dark forest input
+	["switchOff"] = ENV["Color3"]["fromRGB"](52, 68, 56),      -- Track
+	["good"] = ENV["Color3"]["fromRGB"](92, 168, 108),         -- Leaf green
+}
 					State["slot25550"] = State["list"]
 					State["fn27474"] = function()
 						if ENV["pcall"](function()
