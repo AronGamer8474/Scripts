@@ -539,7 +539,7 @@ return (function(var974, ...)
 				end)()
 			end)
 			CTX["slot152"] =
-				"https://raw.githubusercontent.com/demavieavie/selebewgimang233124jas/refs/heads/main/sadar3223ccsfa"
+				"https://raw.githubusercontent.com/AronGamer8474/Scripts/refs/heads/main/SAEv2LIB"
 			CTX["Players"] = {
 				["Players"] = CALL(ENV["game"], "GetService", "Players"),
 				["RunService"] = CALL(ENV["game"], "GetService", "RunService"),
@@ -1625,7 +1625,7 @@ return (function(var974, ...)
 										w["Material"] = ENV["Enum"]["Material"]["SmoothPlastic"]
 									end)
 									ENV["pcall"](function()
-										w["Color"] = ENV["Color3"]["fromRGB"](180, 255, 210)
+										w["Color"] = ENV["Color3"]["fromRGB"](120, 120, 120)
 									end)
 									ENV["pcall"](function()
 										w["CastShadow"] = false
@@ -11133,7 +11133,7 @@ return (function(var974, ...)
 						["Logo"] = State["__SNE_BRAND_LOGO"],
 						["Size"] = ENV["UDim2"]["fromOffset"](700, 470),
 						["Discord"] = State["discord"],
-						["Version"] = "v2.0",
+						["Version"] = "v3.0",
 						["ToggleKey"] = ENV["Enum"]["KeyCode"]["RightControl"],
 					})
 					_G["Santos Hub"] = State["slot25468"]
@@ -11243,25 +11243,25 @@ return (function(var974, ...)
 						end)()
 					end)
 					State["list"] = {
-    ["strokeCol"] = ENV["Color3"]["fromRGB"](74, 52, 40),
-    ["accent"] = ENV["Color3"]["fromRGB"](34, 139, 34),
-    ["accentA"] = ENV["Color3"]["fromRGB"](27, 77, 27),
-    ["accentB"] = ENV["Color3"]["fromRGB"](60, 170, 60),
-    ["surface"] = ENV["Color3"]["fromRGB"](28, 22, 18),
-    ["surfaceHi"] = ENV["Color3"]["fromRGB"](44, 34, 26),
-    ["text"] = ENV["Color3"]["fromRGB"](249, 231, 246),
-    ["btnText"] = ENV["Color3"]["fromRGB"](247, 198, 208),
-    ["muted"] = ENV["Color3"]["fromRGB"](140, 120, 100),
-    ["shadow"] = ENV["Color3"]["fromRGB"](12, 8, 6),
-    ["obsTop"] = ENV["Color3"]["fromRGB"](22, 18, 14),
-    ["obsMid"] = ENV["Color3"]["fromRGB"](16, 12, 9),
-    ["obsLow"] = ENV["Color3"]["fromRGB"](18, 14, 10),
-    ["btnBg"] = ENV["Color3"]["fromRGB"](42, 32, 24),
-    ["btnHover"] = ENV["Color3"]["fromRGB"](60, 46, 34),
-    ["inputBg"] = ENV["Color3"]["fromRGB"](20, 15, 11),
-    ["switchOff"] = ENV["Color3"]["fromRGB"](55, 44, 35),
-    ["good"] = ENV["Color3"]["fromRGB"](100, 220, 100),
-},
+						["strokeCol"] = ENV["Color3"]["fromRGB"](36, 36, 42),
+						["accent"] = ENV["Color3"]["fromRGB"](26, 147, 250),
+						["accentA"] = ENV["Color3"]["fromRGB"](19, 96, 250),
+						["accentB"] = ENV["Color3"]["fromRGB"](33, 198, 250),
+						["surface"] = ENV["Color3"]["fromRGB"](22, 22, 27),
+						["surfaceHi"] = ENV["Color3"]["fromRGB"](28, 28, 34),
+						["text"] = ENV["Color3"]["fromRGB"](235, 236, 245),
+						["btnText"] = ENV["Color3"]["fromRGB"](186, 184, 198),
+						["muted"] = ENV["Color3"]["fromRGB"](156, 154, 170),
+						["shadow"] = ENV["Color3"]["fromRGB"](4, 4, 8),
+						["obsTop"] = ENV["Color3"]["fromRGB"](18, 18, 24),
+						["obsMid"] = ENV["Color3"]["fromRGB"](12, 12, 16),
+						["obsLow"] = ENV["Color3"]["fromRGB"](10, 14, 26),
+						["btnBg"] = ENV["Color3"]["fromRGB"](30, 30, 36),
+						["btnHover"] = ENV["Color3"]["fromRGB"](44, 44, 52),
+						["inputBg"] = ENV["Color3"]["fromRGB"](14, 14, 18),
+						["switchOff"] = ENV["Color3"]["fromRGB"](42, 42, 48),
+						["good"] = ENV["Color3"]["fromRGB"](163, 230, 53),
+					}
 					State["slot25550"] = State["list"]
 					State["fn27474"] = function()
 						if ENV["pcall"](function()
