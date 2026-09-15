@@ -9,10 +9,10 @@ local LocalPlayer = Players.LocalPlayer
 
 -- Touch-only device (HP / tablet tanpa keyboard): window ngisi layar, target
 -- sentuh dibesarin, satu kolom. Desktop ga berubah. Preview di desktop:
--- getgenv().SenaForceTouch = true sebelum load.
+-- getgenv().SantosForceTouch = true sebelum load.
 local IS_TOUCH = false
 do
-	local ok, forced = pcall(function() return getgenv and getgenv().SenaForceTouch end)
+	local ok, forced = pcall(function() return getgenv and getgenv().SantosForceTouch end)
 	if ok and forced then
 		IS_TOUCH = true
 	else
@@ -131,7 +131,7 @@ local function WatchLogo(image, fallback)
 		if not image.IsLoaded then
 			image.Visible = false
 			if fallback then fallback.Visible = true end
-			warn("[Sena] logo failed to load: " .. tostring(image.Image)
+			warn("[Santos] logo failed to load: " .. tostring(image.Image)
 				.. " (use an Image asset id, not a Decal id)")
 		end
 	end)
@@ -241,7 +241,7 @@ local function GetIconPack()
 	IconPackTried = true
 
 	local okCache, cached = pcall(function()
-		return getgenv().SenaLucideIcons
+		return getgenv().SantosLucideIcons
 	end)
 	if okCache and type(cached) == "table" then
 		IconPack = cached
@@ -262,7 +262,7 @@ local function GetIconPack()
 	end)
 
 	if IconPack then
-		pcall(function() getgenv().SenaLucideIcons = IconPack end)
+		pcall(function() getgenv().SantosLucideIcons = IconPack end)
 	end
 
 	return IconPack
@@ -458,13 +458,13 @@ local function MakeDraggable(handle, target, track)
 	if track then track(moved) end
 end
 
-local Sena = {}
-Sena.Theme = Theme
-Sena.Flags = {}
-Sena.Windows = {}
-Sena.Unloaded = false
+local Santos = {}
+Santos.Theme = Theme
+Santos.Flags = {}
+Santos.Windows = {}
+Santos.Unloaded = false
 
-function Sena:SetTheme(overrides)
+function Santos:SetTheme(overrides)
 	for key, value in pairs(overrides or {}) do
 		if Theme[key] ~= nil then
 			Theme[key] = value
@@ -481,7 +481,7 @@ local function EnsureNotifyGui()
 
 	pcall(function()
 		for _, child in ipairs(parent:GetChildren()) do
-			if child.Name == "SenaNotify" then
+			if child.Name == "SantosNotify" then
 				pcall(function() child:Destroy() end)
 			end
 		end
@@ -489,7 +489,7 @@ local function EnsureNotifyGui()
 
 	NotifyGui = New("ScreenGui", {
 		AutoLocalize = false,  -- Roblox otomatis nerjemahin 'Join' -> 'Bergabung' dll. dan ngerusak lebar tombol
-		Name = "SenaNotify",
+		Name = "SantosNotify",
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		ResetOnSpawn = false,
 		DisplayOrder = 9999,
@@ -513,9 +513,9 @@ local function EnsureNotifyGui()
 	}, NotifyHolder)
 end
 
-function Sena:Notify(config)
+function Santos:Notify(config)
 	config = config or {}
-	local title    = tostring(config.Title or config[1] or "Sena")
+	local title    = tostring(config.Title or config[1] or "Santos")
 	local content  = tostring(config.Content or config.Description or config[2] or "")
 	local duration = tonumber(config.Duration or config.Time or config[3]) or 4
 	local icon     = config.Icon
@@ -636,11 +636,11 @@ end
 
 -- Notification-style card with an avatar and two buttons (Accept / Decline).
 -- Used for "X requests to join your server"; resolves the callback once.
---   Sena:Prompt({ Title, Content, Avatar = <userId>, Accept = "Accept",
+--   Santos:Prompt({ Title, Content, Avatar = <userId>, Accept = "Accept",
 --                 Decline = "Decline", Duration = 60, Callback = function(accepted) end })
-function Sena:Prompt(config)
+function Santos:Prompt(config)
 	config = config or {}
-	local title    = tostring(config.Title or "Sena")
+	local title    = tostring(config.Title or "Santos")
 	local content  = tostring(config.Content or "")
 	local duration = math.max(5, tonumber(config.Duration) or 60)
 	local avatar   = config.Avatar
@@ -790,7 +790,7 @@ function Sena:Prompt(config)
 			task.spawn(function()
 				Elevate()
 				local ok, err = pcall(callback, accepted)
-				if not ok then warn("[Sena] Prompt callback error:", err) end
+				if not ok then warn("[Santos] Prompt callback error:", err) end
 			end)
 		end
 	end
@@ -821,7 +821,7 @@ local function EnsureAnnounceGui()
 
 	pcall(function()
 		for _, child in ipairs(parent:GetChildren()) do
-			if child.Name == "SenaAnnounce" then
+			if child.Name == "SantosAnnounce" then
 				pcall(function() child:Destroy() end)
 			end
 		end
@@ -829,7 +829,7 @@ local function EnsureAnnounceGui()
 
 	AnnounceGui = New("ScreenGui", {
 		AutoLocalize = false,  -- Roblox otomatis nerjemahin 'Join' -> 'Bergabung' dll. dan ngerusak lebar tombol
-		Name = "SenaAnnounce",
+		Name = "SantosAnnounce",
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		ResetOnSpawn = false,
 		DisplayOrder = 10000,
@@ -874,9 +874,9 @@ local function ResolveAnnounceSound(value)
 	return tostring(value)
 end
 
-function Sena:Announce(config)
+function Santos:Announce(config)
 	config = config or {}
-	local title    = tostring(config.Title or config[1] or "Sena Announcements")
+	local title    = tostring(config.Title or config[1] or "Santos Announcements")
 	local content  = tostring(config.Content or config.Text or config.Description or config[2] or "")
 	local duration = tonumber(config.Duration or config.Time or config[3]) or 15
 	local iconName = config.Icon or "megaphone"
@@ -1167,11 +1167,11 @@ local function LocalUserName()
 	return tostring(ok and name or "")
 end
 
--- Default kalau loader ga nyetel getgenv().SenaBackend. Nama game diambil
+-- Default kalau loader ga nyetel getgenv().SantosBackend. Nama game diambil
 -- dari MarketplaceService pas loop pertama jalan (yield, jadi jangan di main thread).
 local DEFAULT_BACKEND = {
-	Api = "http://56.10.112.179:8080",
-	Key = "sena_20VvixjHsd1OPPwgHYJAstpM",
+	Api = "https://santos-backend-oya3.onrender.com/",
+	Key = "user_test_7f4a91c2",
 }
 
 local function DetectGameName()
@@ -1200,7 +1200,7 @@ local function HandleJoinUpdate(this, req)
 	if req.incoming then
 		if status ~= "pending" then return end
 		if (os.time() - (tonumber(req.ts) or 0)) > 110 then return end
-		Sena:Prompt({
+		Santos:Prompt({
 			Title = tostring(req.name or "Someone"),
 			Content = "wants to join your server (" .. tostring(req.game or "?") .. ")",
 			Avatar = tostring(req.av or ""):match("^%d+$") and req.av or nil,
@@ -1209,11 +1209,11 @@ local function HandleJoinUpdate(this, req)
 			Duration = 60,
 			Callback = function(accepted)
 				if accepted == nil then return end
-				local ok, err = Sena:AnswerJoin(id, accepted == true)
+				local ok, err = Santos:AnswerJoin(id, accepted == true)
 				if not ok then
-					Sena:Notify({ Title = "Request join", Content = "Could not answer: " .. tostring(err), Duration = 4 })
+					Santos:Notify({ Title = "Request join", Content = "Could not answer: " .. tostring(err), Duration = 4 })
 				elseif accepted then
-					Sena:Notify({ Title = "Request join", Content = tostring(req.name or "They") .. " is on the way to your server.", Duration = 4 })
+					Santos:Notify({ Title = "Request join", Content = tostring(req.name or "They") .. " is on the way to your server.", Duration = 4 })
 				end
 			end,
 		})
@@ -1222,7 +1222,7 @@ local function HandleJoinUpdate(this, req)
 			local place = tonumber(req.place)
 			local job = tostring(req.job or "")
 			if place and job ~= "" then
-				Sena:Notify({ Title = "Request join", Content = tostring(req.to_name or "They") .. " accepted. Joining their server...", Duration = 5 })
+				Santos:Notify({ Title = "Request join", Content = tostring(req.to_name or "They") .. " accepted. Joining their server...", Duration = 5 })
 				task.delay(1.2, function()
 					pcall(function()
 						game:GetService("TeleportService"):TeleportToPlaceInstance(place, job, LocalPlayer)
@@ -1230,9 +1230,9 @@ local function HandleJoinUpdate(this, req)
 				end)
 			end
 		elseif status == "declined" then
-			Sena:Notify({ Title = "Request join", Content = tostring(req.to_name or "They") .. " declined.", Duration = 4 })
+			Santos:Notify({ Title = "Request join", Content = tostring(req.to_name or "They") .. " declined.", Duration = 4 })
 		elseif status == "expired" then
-			Sena:Notify({ Title = "Request join", Content = tostring(req.to_name or "They") .. " did not answer.", Duration = 4 })
+			Santos:Notify({ Title = "Request join", Content = tostring(req.to_name or "They") .. " did not answer.", Duration = 4 })
 		end
 	end
 end
@@ -1248,7 +1248,7 @@ local function StartBackendLoop(this)
 
 		-- berhenti kalau Disconnect, atau lib ini di-unload (Window:Destroy).
 		-- CreateWindow berikutnya manggil ConnectBackend lagi buat nyalain ulang.
-		while this.Running and not Sena.Unloaded do
+		while this.Running and not Santos.Unloaded do
 			local params = {
 				uid = uid,
 				key = this.Key,
@@ -1297,7 +1297,7 @@ local function StartBackendLoop(this)
 							task.spawn(function()
 								Elevate()
 								local ok, err = pcall(fn, msg)
-								if not ok then warn("[Sena] chat listener error:", err) end
+								if not ok then warn("[Santos] chat listener error:", err) end
 							end)
 						end
 					end
@@ -1315,7 +1315,7 @@ local function StartBackendLoop(this)
 							task.spawn(function()
 								Elevate()
 								local ok, err = pcall(fn, msg)
-								if not ok then warn("[Sena] dm listener error:", err) end
+								if not ok then warn("[Santos] dm listener error:", err) end
 							end)
 						end
 					end
@@ -1331,7 +1331,7 @@ local function StartBackendLoop(this)
 						task.spawn(function()
 							Elevate()
 							local ok, err = pcall(HandleJoinUpdate, this, req)
-							if not ok then warn("[Sena] join handler error:", err) end
+							if not ok then warn("[Santos] join handler error:", err) end
 						end)
 					end
 				elseif tonumber(data.join_seq) and this.JoinSince == 0 then
@@ -1343,7 +1343,7 @@ local function StartBackendLoop(this)
 						task.spawn(function()
 							Elevate()
 							local ok, err = pcall(fn, data.fuse)
-							if not ok then warn("[Sena] fuse listener error:", err) end
+							if not ok then warn("[Santos] fuse listener error:", err) end
 						end)
 					end
 				end
@@ -1357,7 +1357,7 @@ local function StartBackendLoop(this)
 							local id = tonumber(ann.id) or 0
 							if id > this.AnnSince then this.AnnSince = id end
 							if this.Announcements then
-								Sena:Announce({
+								Santos:Announce({
 									Title = ann.title,
 									Content = ann.text,
 									Duration = tonumber(ann.duration) or 15,
@@ -1381,14 +1381,14 @@ local function StartBackendLoop(this)
 	end)
 end
 
-function Sena:ConnectBackend(config)
+function Santos:ConnectBackend(config)
 	config = config or {}
 	if config.Disabled then return nil end
 
 	if not Backend then
 		local api = tostring(config.Api or DEFAULT_BACKEND.Api or ""):gsub("/+$", "")
 		if api == "" then
-			warn("[Sena] ConnectBackend: Api kosong")
+			warn("[Santos] ConnectBackend: Api kosong")
 			return nil
 		end
 		Backend = {
@@ -1428,33 +1428,33 @@ function Sena:ConnectBackend(config)
 	return Backend
 end
 
-function Sena:GetBackend() return Backend end
+function Santos:GetBackend() return Backend end
 
-function Sena:DisconnectBackend()
+function Santos:DisconnectBackend()
 	if Backend then Backend.Running = false end
 end
 
-function Sena:OnChat(fn)
+function Santos:OnChat(fn)
 	if not Backend or type(fn) ~= "function" then return false end
 	Backend.Listeners[#Backend.Listeners + 1] = fn
 	return true
 end
 
 -- Param tambahan yang ikut tiap poll /sync (nil = hapus).
-function Sena:SetSyncExtra(key, value)
+function Santos:SetSyncExtra(key, value)
 	if not Backend then return false end
 	Backend.Extra[tostring(key)] = value
 	return true
 end
 
-function Sena:OnFuse(fn)
+function Santos:OnFuse(fn)
 	if not Backend or type(fn) ~= "function" then return false end
 	Backend.FuseListeners[#Backend.FuseListeners + 1] = fn
 	return true
 end
 
 -- GET <api><path> dengan uid/key/name/game/place otomatis. Balik (data|nil, err).
-function Sena:BackendCall(path, params)
+function Santos:BackendCall(path, params)
 	if not Backend then return nil, "not connected" end
 	local merged = {
 		uid = LocalUserId(),
@@ -1470,7 +1470,7 @@ function Sena:BackendCall(path, params)
 	return data, nil
 end
 
-function Sena:SendChat(text)
+function Santos:SendChat(text)
 	if not Backend then return false, "not connected" end
 	text = tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", "")
 	if text == "" then return false, "empty" end
@@ -1487,57 +1487,57 @@ function Sena:SendChat(text)
 	local err = tostring(data.error or "error")
 	if err:match("^badword") then
 		local minutes = err:match("^badword:(%d+)") or "?"
-		local reason = "Sena: kata kasar terdeteksi di global chat. Ban " .. minutes .. " menit."
+		local reason = "Santos: kata kasar terdeteksi di global chat. Ban " .. minutes .. " menit."
 		task.delay(1.5, function() pcall(function() LocalPlayer:Kick(reason) end) end)
 	end
 	return false, err
 end
 
-function Sena:OnDM(fn)
+function Santos:OnDM(fn)
 	if not Backend or type(fn) ~= "function" then return false end
 	Backend.DmListeners[#Backend.DmListeners + 1] = fn
 	return true
 end
 
-function Sena:OnJoin(fn)
+function Santos:OnJoin(fn)
 	if not Backend or type(fn) ~= "function" then return false end
 	Backend.JoinListeners[#Backend.JoinListeners + 1] = fn
 	return true
 end
 
--- Private message to a Roblox username who is online in Sena. Same cooldown
+-- Private message to a Roblox username who is online in Santos. Same cooldown
 -- and word filter as global chat; the server echoes it back with mine=true.
-function Sena:SendDM(toName, text)
+function Santos:SendDM(toName, text)
 	if not Backend then return false, "not connected" end
 	toName = tostring(toName or ""):gsub("^@", "")
 	text = tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", "")
 	if toName == "" then return false, "who?" end
 	if text == "" then return false, "empty" end
-	local data, err = Sena:BackendCall("/dm/send", { to = toName, text = text })
+	local data, err = Santos:BackendCall("/dm/send", { to = toName, text = text })
 	if not data then return false, err end
 	if data.ok then return true, data.to_name end
 	err = tostring(data.error or "error")
 	if err:match("^badword") then
 		local minutes = err:match("^badword:(%d+)") or "?"
-		local reason = "Sena: kata kasar terdeteksi di chat. Ban " .. minutes .. " menit."
+		local reason = "Santos: kata kasar terdeteksi di chat. Ban " .. minutes .. " menit."
 		task.delay(1.5, function() pcall(function() LocalPlayer:Kick(reason) end) end)
 	end
 	return false, err
 end
 
-function Sena:RequestJoin(toName)
+function Santos:RequestJoin(toName)
 	if not Backend then return false, "not connected" end
 	toName = tostring(toName or ""):gsub("^@", "")
 	if toName == "" then return false, "who?" end
-	local data, err = Sena:BackendCall("/join/request", { to = toName })
+	local data, err = Santos:BackendCall("/join/request", { to = toName })
 	if not data then return false, err end
 	if data.ok then return true, data.to_name end
 	return false, tostring(data.error or "error")
 end
 
-function Sena:AnswerJoin(id, accept)
+function Santos:AnswerJoin(id, accept)
 	if not Backend then return false, "not connected" end
-	local data, err = Sena:BackendCall("/join/answer", {
+	local data, err = Santos:BackendCall("/join/answer", {
 		id = tostring(id),
 		accept = accept and "1" or "0",
 		place = tostring(game.PlaceId),
@@ -1548,29 +1548,29 @@ function Sena:AnswerJoin(id, accept)
 	return false, tostring(data.error or "error")
 end
 
-function Sena:CreateWindow(config)
+function Santos:CreateWindow(config)
 	config = config or {}
 
 	-- Window baru berarti lib ini dipakai lagi. Kalau tabel lib-nya dishare
 	-- antar re-execute, Window:Destroy sebelumnya udah matiin loop backend;
 	-- nyalain lagi di sini.
-	Sena.Unloaded = false
+	Santos.Unloaded = false
 	if not Backend then
-		local ok, cfg = pcall(function() return getgenv and getgenv().SenaBackend end)
+		local ok, cfg = pcall(function() return getgenv and getgenv().SantosBackend end)
 		local defaultGame = config.SubTitle or config.Title or ""
 		local bCfg = (ok and type(cfg) == "table") and cfg or {}
 		if not bCfg.Game or bCfg.Game == "" then bCfg.Game = defaultGame end
-		Sena:ConnectBackend(bCfg)
+		Santos:ConnectBackend(bCfg)
 	elseif not Backend.LoopAlive then
-		Sena:ConnectBackend()
+		Santos:ConnectBackend()
 	end
 
-	local title      = tostring(config.Title or config[1] or "Sena")
+	local title      = tostring(config.Title or config[1] or "Santos")
 	local subTitle   = tostring(config.SubTitle or config.Description or config[2] or "")
 	local size       = config.Size or UDim2.fromOffset(680, 452)
 
 	local logo       = config.Logo or ""
-	local discord    = tostring(config.Discord or "dsc.gg/senahub")
+	local discord    = tostring(config.Discord or "dsc.gg/Santoshub")
 	local version    = tostring(config.Version or "v1.0")
 	local toggleKey  = config.ToggleKey or Enum.KeyCode.RightControl
 	local sidebarW   = tonumber(config.SidebarWidth) or 142
@@ -1584,7 +1584,7 @@ function Sena:CreateWindow(config)
 
 	local Window = {}
 	local Connections = {}
-	Sena.Unloaded = false
+	Santos.Unloaded = false
 
 	local function Track(connection)
 		if connection then table.insert(Connections, connection) end
@@ -1593,11 +1593,11 @@ function Sena:CreateWindow(config)
 
 	Window.Tabs = {}
 	Window.CurrentTab = nil
-	Window.Flags = Sena.Flags
+	Window.Flags = Santos.Flags
 
 	local ScreenGui = New("ScreenGui", {
 		AutoLocalize = false,  -- Roblox otomatis nerjemahin 'Join' -> 'Bergabung' dll. dan ngerusak lebar tombol
-		Name = "SenaUI",
+		Name = "SantosUI",
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		ResetOnSpawn = false,
 		IgnoreGuiInset = true,
@@ -1987,9 +1987,9 @@ function Sena:CreateWindow(config)
 	DiscordPill.MouseButton1Click:Connect(function()
 		Elevate()
 		if CopyToClipboard(discord) then
-			Sena:Notify({ Title = "Copied", Content = discord, Icon = "clipboard-check", Duration = 3 })
+			Santos:Notify({ Title = "Copied", Content = discord, Icon = "clipboard-check", Duration = 3 })
 		else
-			Sena:Notify({ Title = "Discord", Content = discord, Icon = "link", Duration = 5 })
+			Santos:Notify({ Title = "Discord", Content = discord, Icon = "link", Duration = 5 })
 		end
 	end)
 
@@ -2056,7 +2056,7 @@ function Sena:CreateWindow(config)
 	local floatSize = tonumber(config.FloatSize) or 58
 
 	local FloatButton = New("ImageButton", {
-		Name = "SenaFloat",
+		Name = "SantosFloat",
 		AnchorPoint = Vector2.new(0, 0),
 		Position = UDim2.new(0, 20, 0, 20),
 		Size = UDim2.new(0, floatSize, 0, floatSize),
@@ -2111,7 +2111,7 @@ function Sena:CreateWindow(config)
 		task.spawn(function()
 			Elevate()
 			while not FloatButton.Visible do
-				if Sena.Unloaded or not FloatButton.Parent then return end
+				if Santos.Unloaded or not FloatButton.Parent then return end
 				task.wait(0.2)
 			end
 			for _ = 1, 24 do
@@ -2178,7 +2178,7 @@ function Sena:CreateWindow(config)
 	function Window:GetScale() return baseScale end
 
 	function Window:Destroy()
-		Sena.Unloaded = true
+		Santos.Unloaded = true
 
 		for _, connection in ipairs(Connections) do
 			pcall(function() connection:Disconnect() end)
@@ -2193,7 +2193,7 @@ function Sena:CreateWindow(config)
 	end
 	Window.Unload = Window.Destroy
 
-	function Window:Notify(cfg) return Sena:Notify(cfg) end
+	function Window:Notify(cfg) return Santos:Notify(cfg) end
 
 	local ConfigSystem
 	do
@@ -2218,7 +2218,7 @@ function Sena:CreateWindow(config)
 
 		local folderTitle = Sanitize(title)
 		local folder = tostring(config.ConfigFolder
-			or ("Sena/" .. (folderTitle ~= "" and folderTitle or "Hub") .. "/" .. gameKey))
+			or ("Santos/" .. (folderTitle ~= "" and folderTitle or "Hub") .. "/" .. gameKey))
 
 		ConfigSystem = {
 			Enabled = config.SaveConfig ~= false,
@@ -2967,7 +2967,7 @@ function Sena:CreateWindow(config)
 			end
 
 			local function Bind(flag, funcs)
-				if flag then Sena.Flags[flag] = funcs end
+				if flag then Santos.Flags[flag] = funcs end
 			end
 
 			local function SaveState(itemTitle, itemCfg, funcs, getter, setter)
@@ -3161,7 +3161,7 @@ function Sena:CreateWindow(config)
 					task.spawn(function()
 						Elevate()
 						local ok, err = pcall(callback)
-						if not ok then warn("[Sena] Button callback error:", err) end
+						if not ok then warn("[Santos] Button callback error:", err) end
 					end)
 				end)
 
@@ -3233,7 +3233,7 @@ function Sena:CreateWindow(config)
 						task.spawn(function()
 							Elevate()
 							local ok, err = pcall(callback, value)
-							if not ok then warn("[Sena] Toggle callback error:", err) end
+							if not ok then warn("[Santos] Toggle callback error:", err) end
 						end)
 					end
 				end
@@ -3337,7 +3337,7 @@ function Sena:CreateWindow(config)
 						task.spawn(function()
 							Elevate()
 							local ok, err = pcall(callback, value)
-							if not ok then warn("[Sena] Slider callback error:", err) end
+							if not ok then warn("[Santos] Slider callback error:", err) end
 						end)
 					end
 				end
@@ -3453,7 +3453,7 @@ function Sena:CreateWindow(config)
 						task.spawn(function()
 							Elevate()
 							local ok, err = pcall(callback, numeric and (tonumber(value) or 0) or value)
-							if not ok then warn("[Sena] Input callback error:", err) end
+							if not ok then warn("[Santos] Input callback error:", err) end
 						end)
 					end
 				end
@@ -3606,7 +3606,7 @@ function Sena:CreateWindow(config)
 					task.spawn(function()
 						Elevate()
 						local ok, err = pcall(callback, multi and list or (list[1] or ""))
-						if not ok then warn("[Sena] Dropdown callback error:", err) end
+						if not ok then warn("[Santos] Dropdown callback error:", err) end
 					end)
 				end
 
@@ -3860,7 +3860,7 @@ function Sena:CreateWindow(config)
 
 				function funcs:Set(keyCode) SetKey(keyCode, true) end
 				function funcs:Get() return currentKey end
-				if flag then Sena.Flags[flag] = funcs end
+				if flag then Santos.Flags[flag] = funcs end
 				SaveState(kTitle, itemCfg, funcs,
 					function() return currentKey and currentKey.Name or "" end,
 					function(name) SetKey(name ~= "" and name or nil, true) end)
@@ -3918,12 +3918,12 @@ function Sena:CreateWindow(config)
 				-- ikut server (chat_max di config bot) kecuali di-override per panel
 				local function MaxLength()
 					if fixedMax then return math.max(10, fixedMax) end
-					local b = Sena:GetBackend()
+					local b = Santos:GetBackend()
 					return math.max(10, tonumber(b and b.ChatMax) or 120)
 				end
 
 				local function ChatTtl()
-					local b = Sena:GetBackend()
+					local b = Santos:GetBackend()
 					return math.max(30, tonumber(b and b.ChatTtl) or 600)
 				end
 
@@ -4357,7 +4357,7 @@ function Sena:CreateWindow(config)
 					SystemLine("/global - back to global chat")
 					SystemLine("/requestjoin <player> - ask to join their server")
 					SystemLine("/accept  /decline - answer the latest join request")
-					SystemLine("Tip: the Global / PM button at the top switches modes too. Names are Roblox usernames, they must be online in Sena.")
+					SystemLine("Tip: the Global / PM button at the top switches modes too. Names are Roblox usernames, they must be online in Santos.")
 				end
 
 				-- returns text to send (or nil when the command was fully handled)
@@ -4392,7 +4392,7 @@ function Sena:CreateWindow(config)
 						end
 						task.spawn(function()
 							Elevate()
-							local ok, res = Sena:RequestJoin(who)
+							local ok, res = Santos:RequestJoin(who)
 							if ok then
 								SystemLine("Asked " .. tostring(res or who) .. " to join their server. Waiting for the answer...")
 							else
@@ -4410,7 +4410,7 @@ function Sena:CreateWindow(config)
 						local accept = cmd == "accept"
 						task.spawn(function()
 							Elevate()
-							local ok, err = Sena:AnswerJoin(id, accept)
+							local ok, err = Santos:AnswerJoin(id, accept)
 							if ok then
 								SystemLine(accept and "Accepted, they are on the way." or "Declined.")
 							else
@@ -4451,9 +4451,9 @@ function Sena:CreateWindow(config)
 						Elevate()
 						local ok, err
 						if mode == "pm" then
-							ok, err = Sena:SendDM(pmTarget, text)
+							ok, err = Santos:SendDM(pmTarget, text)
 						else
-							ok, err = Sena:SendChat(text)
+							ok, err = Santos:SendChat(text)
 						end
 						if ok then
 							lastSent = os.clock()
@@ -4502,24 +4502,24 @@ function Sena:CreateWindow(config)
 				end)
 				Send.MouseButton1Click:Connect(Submit)
 
-				local backend = Sena:GetBackend()
+				local backend = Santos:GetBackend()
 				if not backend then
-					local ok, cfg = pcall(function() return getgenv and getgenv().SenaBackend end)
-					backend = Sena:ConnectBackend((ok and type(cfg) == "table") and cfg or {})
+					local ok, cfg = pcall(function() return getgenv and getgenv().SantosBackend end)
+					backend = Santos:ConnectBackend((ok and type(cfg) == "table") and cfg or {})
 				end
 				if not backend then
-					SystemLine("Not connected. Call Sena:ConnectBackend({ Api = ..., Key = ..., Game = ... }) first.")
+					SystemLine("Not connected. Call Santos:ConnectBackend({ Api = ..., Key = ..., Game = ... }) first.")
 					SetSend(false, "Send")
 				else
 					for _, msg in ipairs(backend.History) do Append(msg) end
 					for _, msg in ipairs(backend.DmHistory or {}) do Append(msg) end
-					Sena:OnChat(function(msg)
+					Santos:OnChat(function(msg)
 						if Row.Parent then Append(msg) end
 					end)
-					Sena:OnDM(function(msg)
+					Santos:OnDM(function(msg)
 						if Row.Parent then Append(msg) end
 					end)
-					Sena:OnJoin(function(req)
+					Santos:OnJoin(function(req)
 						if not Row.Parent then return end
 						local status = tostring(req.status or "")
 						if req.incoming then
@@ -4539,7 +4539,7 @@ function Sena:CreateWindow(config)
 					task.spawn(function()
 						Elevate()
 						local tick = 0
-						while Row.Parent and not Sena.Unloaded do
+						while Row.Parent and not Santos.Unloaded do
 							if backend.Connected then
 								OnlineLabel.Text = '<font color="#4ADE80">●</font>  ' .. tostring(backend.Online) .. " online"
 								OnlineLabel.TextColor3 = Theme.SubText
@@ -4705,7 +4705,7 @@ function Sena:CreateWindow(config)
 						task.spawn(function()
 							Elevate()
 							local ok, err = pcall(onClick)
-							if not ok then warn("[Sena] Config action error:", err) end
+							if not ok then warn("[Santos] Config action error:", err) end
 						end)
 					end)
 
@@ -4717,7 +4717,7 @@ function Sena:CreateWindow(config)
 				Action(RowOne, 1, "save", "Save", function()
 					local name = CurrentName()
 					if name == "" then
-						Sena:Notify({ Title = "Config", Content = "Enter a config name first.", Icon = "triangle-alert" })
+						Santos:Notify({ Title = "Config", Content = "Enter a config name first.", Icon = "triangle-alert" })
 						return
 					end
 
@@ -4729,16 +4729,16 @@ function Sena:CreateWindow(config)
 					end
 					if ok then
 						RefreshList(name)
-						Sena:Notify({ Title = "Config saved", Content = name, Icon = "save" })
+						Santos:Notify({ Title = "Config saved", Content = name, Icon = "save" })
 					else
-						Sena:Notify({ Title = "Save failed", Content = tostring(err or "Unknown error."), Icon = "triangle-alert" })
+						Santos:Notify({ Title = "Save failed", Content = tostring(err or "Unknown error."), Icon = "triangle-alert" })
 					end
 				end)
 
 				Action(RowOne, 2, "folder-open", "Load", function()
 					local name = CurrentName()
 					if name == "" then
-						Sena:Notify({ Title = "Config", Content = "Select a config first.", Icon = "triangle-alert" })
+						Santos:Notify({ Title = "Config", Content = "Select a config first.", Icon = "triangle-alert" })
 						return
 					end
 
@@ -4749,9 +4749,9 @@ function Sena:CreateWindow(config)
 						ok, err = ConfigSystem:Load(name)
 					end
 					if ok then
-						Sena:Notify({ Title = "Config loaded", Content = name, Icon = "folder-open" })
+						Santos:Notify({ Title = "Config loaded", Content = name, Icon = "folder-open" })
 					else
-						Sena:Notify({ Title = "Load failed", Content = tostring(err or "Config not found."), Icon = "triangle-alert" })
+						Santos:Notify({ Title = "Load failed", Content = tostring(err or "Config not found."), Icon = "triangle-alert" })
 					end
 				end)
 
@@ -4771,15 +4771,15 @@ function Sena:CreateWindow(config)
 						if NameInput then NameInput:Set("", true) end
 						RefreshList("")
 						if ConfigList then ConfigList:Clear() end
-						Sena:Notify({ Title = "Config deleted", Content = name, Icon = "trash-2" })
+						Santos:Notify({ Title = "Config deleted", Content = name, Icon = "trash-2" })
 					else
-						Sena:Notify({ Title = "Delete failed", Content = name, Icon = "triangle-alert" })
+						Santos:Notify({ Title = "Delete failed", Content = name, Icon = "triangle-alert" })
 					end
 				end)
 
 				Action(RowTwo, 2, "rotate-cw", "Refresh", function()
 					RefreshList(CurrentName())
-					Sena:Notify({ Title = "Config", Content = "Config list refreshed.", Icon = "rotate-cw", Duration = 2 })
+					Santos:Notify({ Title = "Config", Content = "Config list refreshed.", Icon = "rotate-cw", Duration = 2 })
 				end)
 
 				local PasteInput
@@ -4788,12 +4788,12 @@ function Sena:CreateWindow(config)
 				Action(RowThree, 1, "clipboard-copy", "Export", function()
 					local encoded = ConfigSystem:Export()
 					if not encoded then
-						Sena:Notify({ Title = "Export failed", Content = "Could not encode the config.", Icon = "triangle-alert" })
+						Santos:Notify({ Title = "Export failed", Content = "Could not encode the config.", Icon = "triangle-alert" })
 						return
 					end
 
 					if CopyToClipboard(encoded) then
-						Sena:Notify({
+						Santos:Notify({
 							Title = "Config exported",
 							Content = "Config JSON copied to clipboard.",
 							Icon = "clipboard-check",
@@ -4804,7 +4804,7 @@ function Sena:CreateWindow(config)
 					if ConfigSystem.HasFiles then
 						local path = ConfigSystem.Folder .. "/export.json"
 						if pcall(function() writefile(path, encoded) end) then
-							Sena:Notify({
+							Santos:Notify({
 								Title = "Config exported",
 								Content = "No clipboard support, saved to " .. path,
 								Icon = "save",
@@ -4814,7 +4814,7 @@ function Sena:CreateWindow(config)
 						end
 					end
 
-					Sena:Notify({
+					Santos:Notify({
 						Title = "Export failed",
 						Content = "This executor supports neither clipboard nor writefile.",
 						Icon = "triangle-alert",
@@ -4838,7 +4838,7 @@ function Sena:CreateWindow(config)
 					end
 
 					if not raw then
-						Sena:Notify({
+						Santos:Notify({
 							Title = "Import failed",
 							Content = "Nothing to import. Paste the config JSON into the Import Data field.",
 							Icon = "triangle-alert",
@@ -4848,10 +4848,10 @@ function Sena:CreateWindow(config)
 					end
 
 					if ConfigSystem:Import(raw) then
-						Sena:Notify({ Title = "Config imported", Content = "All values have been applied.", Icon = "clipboard-check" })
+						Santos:Notify({ Title = "Config imported", Content = "All values have been applied.", Icon = "clipboard-check" })
 						if PasteInput then PasteInput:Set("", true) end
 					else
-						Sena:Notify({ Title = "Import failed", Content = "That is not valid config JSON.", Icon = "triangle-alert" })
+						Santos:Notify({ Title = "Import failed", Content = "That is not valid config JSON.", Icon = "triangle-alert" })
 					end
 				end)
 
@@ -4875,7 +4875,7 @@ function Sena:CreateWindow(config)
 						if suppressAutoLoad then return end
 						local name = CurrentName()
 						if state and name == "" then
-							Sena:Notify({ Title = "Auto Load", Content = "Select a config first.", Icon = "triangle-alert" })
+							Santos:Notify({ Title = "Auto Load", Content = "Select a config first.", Icon = "triangle-alert" })
 							return
 						end
 						ConfigSystem:SetAutoLoad(name, state)
@@ -4898,7 +4898,7 @@ function Sena:CreateWindow(config)
 							if ConfigSystem:Load(pick) then
 								if NameInput then NameInput:Set(pick, true) end
 								RefreshList(pick)
-								Sena:Notify({ Title = "Auto loaded", Content = pick, Icon = "folder-open" })
+								Santos:Notify({ Title = "Auto loaded", Content = pick, Icon = "folder-open" })
 							end
 						end)
 					end
@@ -5000,7 +5000,7 @@ function Sena:CreateWindow(config)
 
 				-- ---- helper -------------------------------------------------------
 				local function Call(path, params)
-					return Sena:BackendCall(path, params)
+					return Santos:BackendCall(path, params)
 				end
 
 				function st.RefreshPets()
@@ -5059,7 +5059,7 @@ function Sena:CreateWindow(config)
 				local function Terminal(mine)
 					if st.matchedId == mine.id or mine.state == "cancelled" then
 						local ok, err = pcall(onCancel, mine)
-						if not ok then warn("[Sena] fuse OnCancelled error:", err) end
+						if not ok then warn("[Santos] fuse OnCancelled error:", err) end
 					end
 					st.matchedId = nil
 					st.teleporting = false
@@ -5086,7 +5086,7 @@ function Sena:CreateWindow(config)
 					task.spawn(function()
 						Elevate()
 						local ok, err = pcall(onMatched, m)
-						if not ok then warn("[Sena] fuse OnMatched error:", err) end
+						if not ok then warn("[Santos] fuse OnMatched error:", err) end
 					end)
 				end
 
@@ -5109,8 +5109,8 @@ function Sena:CreateWindow(config)
 								local needText = tostring(entry.need or "?")
 								SetStatus(L("NeedPet", "You need ") .. needText .. L("NeedPetTail", " (not favorited, not in your pen) to join."))
 								pcall(function()
-									if Sena and Sena.Notify then
-										Sena:Notify({
+									if Santos and Santos.Notify then
+										Santos:Notify({
 											Title = L("ListTitle", "Partner Fuse"),
 											Content = L("NeedPet", "You need ") .. needText .. L("NeedPetTail", " (not favorited, not in your pen) to join."),
 											Duration = 4,
@@ -5131,8 +5131,8 @@ function Sena:CreateWindow(config)
 								if msg == "stop_your_post_first" then msg = L("StopFirst", "Stop your own broadcast first.") end
 								SetStatus(msg)
 								pcall(function()
-									if Sena and Sena.Notify then
-										Sena:Notify({ Title = L("ListTitle", "Partner Fuse"), Content = msg, Duration = 3 })
+									if Santos and Santos.Notify then
+										Santos:Notify({ Title = L("ListTitle", "Partner Fuse"), Content = msg, Duration = 3 })
 									end
 								end)
 								if onFeedback then onFeedback("error", msg) end
@@ -5156,7 +5156,7 @@ function Sena:CreateWindow(config)
 						end)
 						if not ok then
 							st.busy = false
-							warn("[SenaLib] Join error:", err)
+							warn("[SantosLib] Join error:", err)
 						end
 					end)
 				end
@@ -5249,9 +5249,9 @@ function Sena:CreateWindow(config)
 					end
 				end
 
-				if Sena:GetBackend() then
-					Sena:SetSyncExtra("fuse", 1)
-					Sena:OnFuse(OnSync)
+				if Santos:GetBackend() then
+					Santos:SetSyncExtra("fuse", 1)
+					Santos:OnFuse(OnSync)
 				else
 					SetStatus(L("NoBackend", "Backend link is off; partner matching unavailable."))
 				end
@@ -5718,7 +5718,7 @@ function Sena:CreateWindow(config)
 								if label ~= nil then btn.Text = tostring(label) end
 								if color ~= nil then btn.BackgroundColor3 = badgeColor(color) end
 							end)
-							if not ok then warn("[Sena] ActionList callback error:", err) end
+							if not ok then warn("[Santos] ActionList callback error:", err) end
 						end)
 					end
 					btn.Activated:Connect(doClick)
@@ -5843,20 +5843,20 @@ function Sena:CreateWindow(config)
 
 	Window.AddTab = Window.CreateTab
 
-	Sena.Windows[#Sena.Windows + 1] = Window
+	Santos.Windows[#Santos.Windows + 1] = Window
 	SetOpen(true)
 
 	return Window
 end
 
 
--- Auto-connect ke backend. getgenv().SenaBackend (diset loader) bisa override
+-- Auto-connect ke backend. getgenv().SantosBackend (diset loader) bisa override
 -- Api / Key / Game; kalau ga ada, ConnectBackend pakai DEFAULT_BACKEND.
--- Set getgenv().SenaBackend = { Disabled = true } buat matiin.
+-- Set getgenv().SantosBackend = { Disabled = true } buat matiin.
 task.defer(function()
 	Elevate()
-	local ok, cfg = pcall(function() return getgenv and getgenv().SenaBackend end)
-	Sena:ConnectBackend((ok and type(cfg) == "table") and cfg or {})
+	local ok, cfg = pcall(function() return getgenv and getgenv().SantosBackend end)
+	Santos:ConnectBackend((ok and type(cfg) == "table") and cfg or {})
 end)
 
-return Sena
+return Santos
