@@ -14059,6 +14059,52 @@ return (function(var974, ...)
 							end)()
 						end,
 					})
+					CALL(State["__SNE_T3"], "AddButton", {
+	["Title"] = "Instant Steal",
+	["Content"] = "Zeroes HoldDuration on every ProximityPrompt so any prompt fires the instant you touch it. Sweeps the map now and keeps catching new prompts.",
+	["Callback"] = function()
+		ENV["pcall"](function()
+			local workspace = CTX["Players"]["Workspace"]
+			local proximityService = CALL(ENV["game"], "GetService", "ProximityPromptService")
+
+			-- Full sweep of everything already in the map
+			for i, d in ENV["ipairs"](CALL(workspace, "GetDescendants")) do
+				if d["IsA"](d, "ProximityPrompt") then
+					CTX["fn3403"](d)
+				end
+			end
+
+			-- Catch prompts that stream in later
+			if not _G["__SNE_InstantSteal_DescConn"] then
+				_G["__SNE_InstantSteal_DescConn"] = CALL(
+					workspace["DescendantAdded"],
+					"Connect",
+					function(d)
+						if d["IsA"](d, "ProximityPrompt") then
+							ENV["task"]["defer"](CTX["fn3403"], d)
+						end
+					end
+				)
+			end
+
+			-- Catch prompts the exact frame a hold starts
+			if not _G["__SNE_InstantSteal_HoldConn"] then
+				_G["__SNE_InstantSteal_HoldConn"] = CALL(
+					proximityService["PromptButtonHoldBegan"],
+					"Connect",
+					CTX["fn3403"]
+				)
+			end
+
+			CALL(State["slot25316"], "Notify", {
+				["Title"] = "Santos Hub",
+				["Content"] = "Instant Steal armed - all prompts zeroed, new ones auto-caught.",
+				["Icon"] = "zap",
+				["Duration"] = 4,
+			})
+		end)
+	end,
+})
 					State["fn27467"](CALL(State["__SNE_T4"], "AddDropdown", {
 						["Title"] = _G["__SNE_T"]("Tween_Mode", "Movement Mode"),
 						["Content"] = _G["__SNE_T"](
