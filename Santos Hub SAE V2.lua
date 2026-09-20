@@ -2333,6 +2333,11 @@ return (function(var974, ...)
 					end
 					CTX["list3"]["installed"] = true
 					ENV["pcall"](function()
+    if Settings["stealGuards"] and Settings["stealGuards"]["muteRigSync"] then
+        Settings["stealGuards"]["muteRigSync"]()
+    end
+end)
+					ENV["pcall"](function()
 						return (function()
 							local replicatedStorage, var527
 							replicatedStorage =
@@ -2492,21 +2497,28 @@ return (function(var974, ...)
 							if var115["PlatformStand"] then
 								var115["PlatformStand"] = false
 							end
-							var227 = CALL(var115, "GetState")
-							if
-								var227 == ENV["Enum"]["HumanoidStateType"]["Physics"]
-								or var227 == ENV["Enum"]["HumanoidStateType"]["FallingDown"]
-								or var227 == ENV["Enum"]["HumanoidStateType"]["Ragdoll"]
-								or var227 == ENV["Enum"]["HumanoidStateType"]["PlatformStanding"]
-								or var227 == ENV["Enum"]["HumanoidStateType"]["Seated"]
-							then
-								ENV["pcall"](function()
-									CALL(var115, "ChangeState", ENV["Enum"]["HumanoidStateType"]["GettingUp"])
-								end)
-								ENV["pcall"](function()
-									CALL(var115, "ChangeState", ENV["Enum"]["HumanoidStateType"]["Running"])
-								end)
-							end
+							local var227 = CALL(var115, "GetState")
+if var227 == ENV["Enum"]["HumanoidStateType"]["Physics"]
+    or var227 == ENV["Enum"]["HumanoidStateType"]["FallingDown"]
+    or var227 == ENV["Enum"]["HumanoidStateType"]["Ragdoll"]
+    or var227 == ENV["Enum"]["HumanoidStateType"]["PlatformStanding"]
+    or var227 == ENV["Enum"]["HumanoidStateType"]["Seated"] then
+    ENV["pcall"](function()
+        CALL(var115, "ChangeState", ENV["Enum"]["HumanoidStateType"]["GettingUp"])
+    end)
+    ENV["pcall"](function()
+        CALL(var115, "ChangeState", ENV["Enum"]["HumanoidStateType"]["Running"])
+    end)
+end
+-- Oxide-style impulse kill: drop any residual push the server managed to
+-- apply before the RigSync mute and state recovery could land.
+local hrpInst = CALL(lP, "FindFirstChild", "HumanoidRootPart")
+if hrpInst and hrpInst["AssemblyLinearVelocity"]["Magnitude"] > 45 then
+    ENV["pcall"](function()
+        hrpInst["AssemblyLinearVelocity"] = ENV["Vector3"]["zero"]
+        hrpInst["AssemblyAngularVelocity"] = ENV["Vector3"]["zero"]
+    end)
+end
 						end)()
 					end)
 					var184 = nil
@@ -2647,30 +2659,180 @@ return (function(var974, ...)
 				end)
 			end
 			CTX["fn2152"] = function(var34)
-				return (function()
-					local lP, var968
-					Settings["immunity"] = var34 and true or false
-					if Settings["immunity"] then
-						CTX["installed"]()
-					end
-					if not CTX["list3"]["installed"] then
-						return
-					end
-					lP = CTX["Players"]["LP"]["Character"]
-					var968 = lP and CALL(lP, "FindFirstChildOfClass", "Humanoid")
-					CTX["fn2083"](var968, Settings["immunity"])
-					if Settings["immunity"] then
-						ENV["pcall"](function()
-							Settings["armSpoof"]()
-						end)
-					end
-					if not Settings["immunity"] then
-						CTX["list3"]["lastEggUid"] = nil
-					end
-				end)()
-			end
-			Settings["stealGuards"] =
-				{ ["resetHooked"] = false, ["touchOff"] = {}, ["healthConn"] = nil, ["respawnConn"] = nil }
+    return (function()
+        local lP, var968
+        Settings["immunity"] = var34 and true or false
+        if Settings["immunity"] then
+            CTX["installed"]()
+            -- Oxide port: kill the knockback signal path immediately
+            ENV["pcall"](function()
+                if Settings["stealGuards"] and Settings["stealGuards"]["muteRigSync"] then
+                    Settings["stealGuards"]["muteRigSync"]()
+                end
+            end)
+        end
+        if not CTX["list3"]["installed"] then
+            return
+        end
+        lP = CTX["Players"]["LP"]["Character"]
+        var968 = lP and CALL(lP, "FindFirstChildOfClass", "Humanoid")
+        CTX["fn2083"](var968, Settings["immunity"])
+        if Settings["immunity"] then
+            ENV["pcall"](function()
+                Settings["armSpoof"]()
+            end)
+        end
+        if not Settings["immunity"] then
+            CTX["list3"]["lastEggUid"] = nil
+            -- Oxide port: restore the game's own ragdoll handling on disable
+            ENV["pcall"](function()
+                if Settings["stealGuards"] and Settings["stealGuards"]["unmuteRigSync"] then
+                    Settings["stealGuards"]["unmuteRigSync"]()
+                end
+            end)
+        end
+    end)()
+end
+			Settings["stealGuards"] = {
+    ["resetHooked"]      = false,
+    ["touchOff"]         = {},
+    ["healthConn"]       = nil,
+    ["respawnConn"]      = nil,
+    -- ── Oxide-style RigSync mute state ────────────────────────────────
+    ["rigSyncRemote"]    = nil,   -- cached RE/RigSync/Refresh RemoteEvent
+    ["rigSyncConns"]     = nil,   -- list of disabled connection handles
+    ["rigSyncApplied"]   = false, -- true while muted
+}
+do
+    -- ================================================================
+    -- OXIDE PORT: RigSync knockback/ragdoll event mute + state pin
+    --
+    -- Oxide's approach: the server sends the ragdoll/knockback signal
+    -- through RE/RigSync/Refresh. Disconnecting every client handler
+    -- on that event means the signal never lands on our client.
+    -- This is layered with the existing Santos Hub guards (Ragdoll
+    -- module hook + humanoid state mask) so a miss on either layer
+    -- is caught by the other.
+    -- ================================================================
+    local rigSync = Settings["stealGuards"]
+
+    local function resolveRigSyncRemote()
+        if rigSync["rigSyncRemote"] and rigSync["rigSyncRemote"]["Parent"] then
+            return rigSync["rigSyncRemote"]
+        end
+        local net = CTX["Players"]["ReplicatedStorage"]["Packages"]
+            and CALL(CTX["Players"]["ReplicatedStorage"]["Packages"], "FindFirstChild", "Networking")
+        if not net then return nil end
+        -- The path used by the game client; falls back to a flat name if the
+        -- hierarchy is ever flattened by an update.
+        local r = CALL(net, "FindFirstChild", "RE/RigSync/Refresh")
+            or CALL(net, "FindFirstChild", "RigSync/Refresh")
+            or CALL(net, "FindFirstChild", "RigSyncRefresh")
+        if r and CALL(r, "IsA", "RemoteEvent") then
+            rigSync["rigSyncRemote"] = r
+            return r
+        end
+        return nil
+    end
+
+    -- Disable every client-side connection on the RigSync remote. This is the
+    -- single most important piece — it is what actually prevents the fling.
+    function rigSync.muteRigSync()
+        local r = resolveRigSyncRemote()
+        if not r then return false end
+        if rigSync["rigSyncApplied"] then return true end
+
+        local getconns = ENV["rawget"](_G, "getconnections")
+            or ENV["rawget"](_G, "get_signal_cons")
+            or (ENV["type"](ENV["getconnections"]) == "function" and ENV["getconnections"])
+        if ENV["type"](getconns) ~= "function" then return false end
+
+        local ok, conns = ENV["pcall"](getconns, r["OnClientEvent"])
+        if not ok or ENV["type"](conns) ~= "table" then return false end
+
+        rigSync["rigSyncConns"] = {}
+        for i, c in ENV["ipairs"](conns) do
+            ENV["pcall"](function()
+                if c["Disable"] then
+                    CALL(c, "Disable")
+                end
+            end)
+            rigSync["rigSyncConns"][#rigSync["rigSyncConns"] + 1] = c
+        end
+        rigSync["rigSyncApplied"] = true
+        return true
+    end
+
+    function rigSync.unmuteRigSync()
+        if not rigSync["rigSyncApplied"] then return end
+        if rigSync["rigSyncConns"] then
+            for i, c in ENV["ipairs"](rigSync["rigSyncConns"]) do
+                ENV["pcall"](function()
+                    if c["Enable"] then
+                        CALL(c, "Enable")
+                    end
+                end)
+            end
+        end
+        rigSync["rigSyncConns"]   = nil
+        rigSync["rigSyncApplied"] = false
+    end
+
+    -- Reapply the mute after a respawn: the character reset does not
+    -- recreate the remote, but a fresh connection may have been added by the
+    -- game's own client on the new humanoid. Cheap to re-run.
+    function rigSync.rearmRigSync()
+        if not Settings["immunity"] then return end
+        rigSync["rigSyncApplied"] = false
+        rigSync["rigSyncConns"]   = nil
+        rigSync.muteRigSync()
+    end
+
+    -- Heartbeat state pin — the second layer. If a hit still manages to
+    -- land on the humanoid (e.g. the remote was already mid-dispatch when
+    -- we muted), force the state back to GettingUp and zero the velocities
+    -- so the character cannot be carried by the impulse.
+    local rigSyncStepped
+    rigSyncStepped = CALL(CTX["Players"]["RunService"]["Stepped"], "Connect", function()
+        if not Settings["immunity"] then return end
+        if Settings["_waitingGuardHit"] then return end
+        if not CTX["fn2244"]() then return end
+        local hum = CTX["fn2210"]()
+        if not hum then return end
+        ENV["pcall"](function()
+            local HST = ENV["Enum"]["HumanoidStateType"]
+            local s = CALL(hum, "GetState")
+            if s == HST["Physics"]
+                or s == HST["FallingDown"]
+                or s == HST["Ragdoll"]
+                or s == HST["PlatformStanding"]
+                or s == HST["Seated"] then
+                CALL(hum, "ChangeState", HST["GettingUp"])
+                CALL(hum, "ChangeState", HST["Running"])
+            end
+            if hum["PlatformStand"] then hum["PlatformStand"] = false end
+            if hum["Sit"] then hum["Sit"] = false end
+        end)
+        local hrp = CTX["fn2217"]()
+        if hrp and hrp["AssemblyLinearVelocity"]["Magnitude"] > 45 then
+            ENV["pcall"](function()
+                hrp["AssemblyLinearVelocity"] = ENV["Vector3"]["zero"]
+                hrp["AssemblyAngularVelocity"] = ENV["Vector3"]["zero"]
+            end)
+        end
+    end)
+
+    -- Tear down on unload; see the Session token hook below.
+    function rigSync.stopRigSync()
+        if rigSyncStepped then
+            ENV["pcall"](function()
+                CALL(rigSyncStepped, "Disconnect")
+            end)
+            rigSyncStepped = nil
+        end
+        rigSync.unmuteRigSync()
+    end
+end
 			Settings["setupSpoof"] = function(var9)
 				if not var9 or not var9["Parent"] then
 					return
@@ -2799,10 +2961,14 @@ return (function(var974, ...)
 				return (function()
 					local lP
 					if var34 then
-						Settings["stealGuards"]["touchGuards"](true)
-						Settings["stealGuards"]["hookReset"]()
-						lP = CTX["Players"]["LP"]["Character"]
-						Settings["stealGuards"]["armHumanoid"](lP and CALL(lP, "FindFirstChildOfClass", "Humanoid"))
+    Settings["stealGuards"]["touchGuards"](true)
+    Settings["stealGuards"]["hookReset"]()
+    -- Oxide port: mute RigSync so a guard hit during Auto Steal cannot fling
+    ENV["pcall"](function()
+        Settings["stealGuards"]["muteRigSync"]()
+    end)
+    lP = CTX["Players"]["LP"]["Character"]
+    Settings["stealGuards"]["armHumanoid"](lP and CALL(lP, "FindFirstChildOfClass", "Humanoid"))
 						if not Settings["stealGuards"]["respawnConn"] then
 							Settings["stealGuards"]["respawnConn"] = CALL(
 								CTX["Players"]["LP"]["CharacterAdded"],
@@ -2814,15 +2980,24 @@ return (function(var974, ...)
 											return
 										end
 										var1154 = var37["WaitForChild"](var37, "Humanoid", 5)
-										Settings["stealGuards"]["armHumanoid"](var1154)
-										Settings["stealGuards"]["touchGuards"](true)
-									end)()
-								end
-							)
-						end
-					else
-						Settings["stealGuards"]["touchGuards"](false)
-						if Settings["stealGuards"]["healthConn"] then
+Settings["stealGuards"]["armHumanoid"](var1154)
+Settings["stealGuards"]["touchGuards"](true)
+-- Oxide port: re-mute the RigSync remote on the new character.
+        ENV["task"]["defer"](function()
+            ENV["pcall"](function()
+                Settings["stealGuards"]["rearmRigSync"]()
+            end)
+        end)
+    end)()
+end
+)
+end
+else
+    Settings["stealGuards"]["touchGuards"](false)
+    ENV["pcall"](function()
+        Settings["stealGuards"]["unmuteRigSync"]()
+    end)
+    if Settings["stealGuards"]["healthConn"] then
 							ENV["pcall"](function()
 								CALL(Settings["stealGuards"]["healthConn"], "Disconnect")
 							end)
@@ -13639,6 +13814,322 @@ return (function(var974, ...)
 							ENV["task"]["wait"](1)
 						end
 					end)
+				-- =====================================================================
+-- DEFENCE MODULE — Anti Trap / Anti Mob / Anti Ragdoll
+-- Ported from Kira Hub into Santos Hub's ENV/CALL/State idioms.
+-- =====================================================================
+Settings["antiTrap"]    = Settings["antiTrap"]    or false
+Settings["antiMob"]     = Settings["antiMob"]     or false
+Settings["antiRagdoll"] = Settings["antiRagdoll"] or false
+
+State["Defence_Api"] = (function()
+    -- ---------- shared state ----------
+    local touch = { saved = {}, char = nil, at = 0 }
+
+    -- Anti-Mob / Anti-Guard state kept as empty stubs so nothing else errors.
+    local guard = {
+        saved     = {},
+        muted     = {},
+        patched   = {},
+        groups    = false,
+        armed     = false,
+        lastSweep = 0,
+    }
+
+    local rag = {
+        ragOff    = false,
+        hum       = nil,
+        stateConn = nil,
+        hpConn    = nil,
+    }
+
+    local heartbeatConn = nil
+
+    -- ---------- helpers ----------
+    local function getChar()
+        local c = CTX["LP"]()
+        if not c or not c["Parent"] then return nil, nil, nil end
+        local h = CALL(c, "FindFirstChildOfClass", "Humanoid")
+        local r = CALL(c, "FindFirstChild", "HumanoidRootPart")
+        if not h or not r or h["Health"] <= 0 then return nil, nil, nil end
+        return c, h, r
+    end
+
+    -- =================================================================
+    -- ANTI TRAP  (unchanged)
+    -- =================================================================
+    local function clearTrap()
+        local char, hum, hrp = getChar()
+        if not char then return end
+
+        local isTrapped = CALL(char, "GetAttribute", "IsTrapped") == true
+        local anchored  = hrp["Anchored"]
+        local zeroJump  = (type(hum["JumpHeight"]) == "number") and hum["JumpHeight"] < 0.5
+
+        if not isTrapped and not anchored and not zeroJump then return end
+
+        ENV["pcall"](function()
+            if isTrapped then CALL(char, "SetAttribute", "IsTrapped", nil) end
+            hrp["Anchored"] = false
+            hum["PlatformStand"] = false
+            hum["Sit"] = false
+            hum["AutoRotate"] = true
+            if type(hum["JumpHeight"]) == "number" and hum["JumpHeight"] < 0.5 then
+                hum["JumpHeight"] = 7.2
+            end
+            local HST = ENV["Enum"]["HumanoidStateType"]
+            local state = CALL(hum, "GetState")
+            if state == HST["Physics"] or state == HST["PlatformStanding"] or state == HST["Seated"] then
+                CALL(hum, "ChangeState", HST["Running"])
+            end
+        end)
+
+        ENV["pcall"](function()
+            local bill = CALL(char, "FindFirstChild", "TrapBillboard", true)
+            if bill then CALL(bill, "Destroy") end
+        end)
+    end
+
+    local function touchOff()
+        local char = CTX["LP"]()
+        if char ~= touch.char then
+            touch.saved = {}
+            touch.char  = char
+            touch.at    = 0
+        end
+        if not char then return end
+        local now = ENV["os"]["clock"]()
+        if now - touch.at < 0.25 then return end
+        touch.at = now
+
+        for _, part in ENV["ipairs"](CALL(char, "GetDescendants")) do
+            if part["IsA"] and CALL(part, "IsA", "BasePart") then
+                if touch.saved[part] == nil then
+                    touch.saved[part] = part["CanTouch"]
+                end
+                if part["CanTouch"] ~= false then
+                    part["CanTouch"] = false
+                end
+            end
+        end
+    end
+
+    local function touchRestore()
+        for part, saved in ENV["pairs"](touch.saved) do
+            if part and part["Parent"] then
+                ENV["pcall"](function() part["CanTouch"] = saved end)
+            end
+        end
+        touch.saved = {}
+    end
+
+    -- =================================================================
+    -- ANTI MOB / ANTI GUARD  — DISABLED
+    -- The toggle stays in the UI, but these are all no-ops now.
+    -- =================================================================
+    local function muteRemote(_) end
+    local function unmuteAll() end
+    local function saveGuardPart(_) end
+    local function restoreGuards()
+        guard.saved = {}
+    end
+    local function physicsGroups(on)
+        guard.groups = on == true
+    end
+    local function installGuardPatches()
+        guard.armed = true
+    end
+    local function uninstallGuardPatches()
+        guard.patched = {}
+        guard.armed   = false
+    end
+    local function sweepGuards() end
+
+    -- =================================================================
+    -- ANTI RAGDOLL  (unchanged)
+    -- =================================================================
+    local function getUp()
+        local char, hum, hrp = getChar()
+        if not char then return end
+
+        local HST = ENV["Enum"]["HumanoidStateType"]
+        local state = CALL(hum, "GetState")
+        local ragTime = CALL(CTX["Players"]["LP"], "GetAttribute", "RagdollEndTime")
+        if type(ragTime) ~= "number" and char then
+            ragTime = CALL(char, "GetAttribute", "RagdollEndTime")
+        end
+        local active = type(ragTime) == "number"
+            and ragTime > CALL(CTX["Players"]["Workspace"], "GetServerTimeNow") - 0.05
+
+        if not active
+           and state ~= HST["Ragdoll"]
+           and state ~= HST["FallingDown"]
+           and state ~= HST["Physics"] then
+            return
+        end
+
+        rag.ragOff = true
+
+        ENV["pcall"](function()
+            CALL(hum, "SetStateEnabled", HST["Ragdoll"],     false)
+            CALL(hum, "SetStateEnabled", HST["FallingDown"], false)
+            CALL(hum, "SetStateEnabled", HST["Physics"],     false)
+            CALL(hum, "ChangeState", HST["GettingUp"])
+            hum["PlatformStand"] = false
+            hum["Sit"]           = false
+        end)
+
+        ENV["pcall"](function()
+            local rj = CTX["ReplicatedStorage4"]
+            if rj and ENV["type"](rj["Release"]) == "function" then
+                CALL(rj, "Release", char)
+            end
+        end)
+
+        ENV["pcall"](function() CALL(char, "SetAttribute", "RagdollEndTime", 0) end)
+        ENV["pcall"](function() CALL(CTX["Players"]["LP"], "SetAttribute", "RagdollEndTime", 0) end)
+
+        ENV["pcall"](function()
+            local md = CALL(char, "FindFirstChildOfClass", "Humanoid")
+            local root = CALL(char, "FindFirstChild", "HumanoidRootPart")
+            if md and root then
+                local mv = md["MoveDirection"]
+                local ws = md["WalkSpeed"] or 0
+                root["AssemblyLinearVelocity"] = ENV["Vector3"]["new"](
+                    mv.X * ws,
+                    root["AssemblyLinearVelocity"].Y,
+                    mv.Z * ws
+                )
+                root["AssemblyAngularVelocity"] = ENV["Vector3"]["zero"]
+            end
+        end)
+    end
+
+    local function installRagdoll()
+        local _, hum = getChar()
+        if not hum then return end
+
+        ENV["pcall"](function()
+            local HST = ENV["Enum"]["HumanoidStateType"]
+            CALL(hum, "SetStateEnabled", HST["Dead"],        false)
+            CALL(hum, "SetStateEnabled", HST["FallingDown"], false)
+            CALL(hum, "SetStateEnabled", HST["Ragdoll"],     false)
+        end)
+
+        if rag.hum == hum then return end
+        if rag.stateConn then ENV["pcall"](function() CALL(rag.stateConn, "Disconnect") end) end
+        if rag.hpConn    then ENV["pcall"](function() CALL(rag.hpConn,    "Disconnect") end) end
+
+        rag.hum = hum
+
+        rag.stateConn = CALL(hum["StateChanged"], "Connect", function(_, s)
+            if not Settings["antiRagdoll"] then return end
+            local HST = ENV["Enum"]["HumanoidStateType"]
+            if s == HST["Ragdoll"] or s == HST["FallingDown"]
+               or s == HST["Physics"] or s == HST["Dead"] then
+                getUp()
+            end
+        end)
+
+        rag.hpConn = CALL(hum["HealthChanged"], "Connect", function(hp)
+            if Settings["antiRagdoll"] and hp < hum["MaxHealth"] then
+                ENV["pcall"](function()
+                    if hp <= 0 then
+                        CALL(hum, "SetStateEnabled", ENV["Enum"]["HumanoidStateType"]["Dead"], false)
+                    end
+                    hum["Health"] = hum["MaxHealth"]
+                end)
+            end
+        end)
+    end
+
+    local function uninstallRagdoll()
+        if rag.stateConn then ENV["pcall"](function() CALL(rag.stateConn, "Disconnect") end); rag.stateConn = nil end
+        if rag.hpConn    then ENV["pcall"](function() CALL(rag.hpConn,    "Disconnect") end); rag.hpConn    = nil end
+
+        if rag.ragOff then
+            local _, hum = getChar()
+            if hum then
+                ENV["pcall"](function()
+                    local HST = ENV["Enum"]["HumanoidStateType"]
+                    CALL(hum, "SetStateEnabled", HST["Ragdoll"],     true)
+                    CALL(hum, "SetStateEnabled", HST["FallingDown"], true)
+                    CALL(hum, "SetStateEnabled", HST["Physics"],     true)
+                    CALL(hum, "SetStateEnabled", HST["Dead"],        true)
+                end)
+            end
+            rag.ragOff = false
+        end
+        rag.hum = nil
+    end
+
+    -- =================================================================
+    -- COORDINATOR
+    -- =================================================================
+    local function tick()
+        if Settings["antiTrap"] then
+            ENV["pcall"](clearTrap)
+            touchOff()
+        elseif next(touch.saved) then
+            touchRestore()
+        end
+
+        -- Anti Mob / Anti Guard intentionally does nothing.
+        if not Settings["antiMob"] and guard.armed then
+            uninstallGuardPatches()
+        end
+
+        if Settings["antiRagdoll"] then
+            installRagdoll()
+            getUp()
+        else
+            uninstallRagdoll()
+        end
+    end
+
+    local api = {}
+
+    function api.apply()
+        if not heartbeatConn then
+            heartbeatConn = CALL(CTX["Players"]["RunService"]["Heartbeat"], "Connect", function()
+                if not _G["__SNE_SESSION_TOKEN"] then return end
+                ENV["pcall"](tick)
+            end)
+        end
+        ENV["pcall"](tick)
+    end
+
+    function api.stop()
+        if heartbeatConn then
+            ENV["pcall"](function() CALL(heartbeatConn, "Disconnect") end)
+            heartbeatConn = nil
+        end
+        touchRestore()
+        uninstallGuardPatches()
+        restoreGuards()
+        uninstallRagdoll()
+    end
+
+    -- Reset on respawn
+    CALL(CTX["Players"]["LP"]["CharacterAdded"], "Connect", function()
+        touch.char = nil
+        touch.saved = {}
+        guard.saved = {}
+        rag.hum = nil
+        if Settings["antiTrap"] or Settings["antiMob"] or Settings["antiRagdoll"] then
+            ENV["task"]["defer"](api.apply)
+        end
+    end)
+
+    -- Hook into unload
+    local prevToken = State["__SNE_SESSION_TOKEN"]
+    State["__SNE_SESSION_TOKEN"] = function()
+        ENV["pcall"](api.stop)
+        if prevToken then return prevToken() end
+    end
+
+    return api
+end)()
 					State["slot26412"] = CALL(State["slot25468"], "CreateTab", {
 						["Title"] = _G["__SNE_T"]("Tab_Nest", "Information"),
 						["Icon"] = "info",
@@ -13673,10 +14164,236 @@ return (function(var974, ...)
 						["Description"] = _G["__SNE_T"]("Tab_Upgrades_Desc", "Treadmill, base and almanac progress"),
 					})
 					State["slot26520"] = CALL(State["slot25468"], "CreateTab", {
-						["Title"] = _G["__SNE_T"]("Tab_Extras", "Extras"),
-						["Icon"] = "wrench",
-						["Description"] = _G["__SNE_T"]("Tab_Extras_Desc", "Roaming, floating windows and framerate"),
-					})
+    ["Title"] = _G["__SNE_T"]("Tab_Extras", "Extras"),
+    ["Icon"] = "wrench",
+    ["Description"] = _G["__SNE_T"]("Tab_Extras_Desc", "Roaming, floating windows and framerate"),
+})
+
+-- =====================================================================
+-- BAT AURA (ported from Kira Hub) — first feature on the Extras tab
+-- =====================================================================
+Settings["batAura"]      = false
+Settings["batAuraRange"] = 17
+
+State["BatAura_Api"] = (function()
+    local SWING_COOLDOWN = 0.7
+    local EQUIP_COOLDOWN = 0.35
+    local lastSwingAt    = 0
+    local lastEquipAt    = 0
+    local swingSeq       = 0
+    local REMOTE         = nil
+    local BAT_ATTR       = "IsBat"
+
+    -- Read the game's own attribute name for bats (Sakura.BatToolAttribute)
+    ENV["pcall"](function()
+        local data = CALL(CTX["Players"]["ReplicatedStorage"], "FindFirstChild", "Data")
+        local sakura = data and CALL(data, "FindFirstChild", "Sakura")
+        if sakura then
+            local mod = CTX["fn2684"](sakura)
+            if ENV["type"](mod) == "table" and ENV["type"](mod["BatToolAttribute"]) == "string" then
+                BAT_ATTR = mod["BatToolAttribute"]
+            end
+        end
+    end)
+
+    local function getRange()
+        local r = ENV["tonumber"](Settings["batAuraRange"])
+        if not r or r < 5 then r = 17 end
+        return r
+    end
+
+    local function aliveHrp(player)
+        local char = player and player["Character"]
+        if not char then return nil end
+        local hrp = CALL(char, "FindFirstChild", "HumanoidRootPart")
+        local hum = CALL(char, "FindFirstChildOfClass", "Humanoid")
+        if hrp and hum and hum["Health"] > 0 then
+            return hrp
+        end
+        return nil
+    end
+
+    local function findBatIn(container)
+        if not container then return nil end
+        for _, child in ENV["ipairs"](CALL(container, "GetChildren")) do
+            local isTool = false
+            ENV["pcall"](function() isTool = child["IsA"](child, "Tool") end)
+            if isTool then
+                local hasAttr = false
+                ENV["pcall"](function()
+                    hasAttr = CALL(child, "GetAttribute", BAT_ATTR) == true
+                end)
+                if hasAttr then return child end
+            end
+        end
+        return nil
+    end
+
+    local function equippedBat()
+        local char = CTX["LP"]()
+        return char and findBatIn(char)
+    end
+
+    local function ensureBat()
+        local b = equippedBat()
+        if b then return b end
+        local char = CTX["LP"]()
+        if not char then return nil end
+        local now = ENV["os"]["clock"]()
+        if now - lastEquipAt < EQUIP_COOLDOWN then return nil end
+        lastEquipAt = now
+        local hum = CALL(char, "FindFirstChildOfClass", "Humanoid")
+        if not hum then return nil end
+        local backpack = CALL(CTX["Players"]["LP"], "FindFirstChild", "Backpack")
+        local b2 = findBatIn(backpack)
+        if not b2 then return nil end
+        ENV["pcall"](function() CALL(hum, "EquipTool", b2) end)
+        return findBatIn(char)
+    end
+
+    local function getRemote()
+        if REMOTE and ENV["typeof"](REMOTE) == "Instance" and REMOTE["Parent"] then
+            return REMOTE
+        end
+        local rs2 = CTX["ReplicatedStorage2"]
+        if rs2 and rs2["BatSwing"] and rs2["BatSwing"]["Trigger"] then
+            local r = rs2["BatSwing"]["Trigger"]
+            if ENV["typeof"](r) == "Instance" then
+                REMOTE = r
+            elseif ENV["type"](r) == "table" then
+                REMOTE = r["Remote"] or r["Instance"] or r["Event"] or r
+            end
+        end
+        return REMOTE
+    end
+
+    local function nextSwingId()
+        swingSeq = swingSeq + 1
+        return ENV["string"]["format"](
+            "%d:%d:%d",
+            CTX["Players"]["LP"]["UserId"],
+            swingSeq,
+            ENV["math"]["floor"](CALL(CTX["Players"]["Workspace"], "GetServerTimeNow") * 1000)
+        )
+    end
+
+    -- Build a set of userIds that are currently carrying an egg (used for priority)
+    local function buildCarrierSet()
+        local set = {}
+        if not Settings["autoSteal"] then return set end
+        local ok, snap = ENV["pcall"](CTX["Players"]["EggCmds"]["GetAreaEggSnapshot"])
+        if ok and ENV["type"](snap) == "table" and ENV["type"](snap["Records"]) == "table" then
+            for _, rec in ENV["ipairs"](snap["Records"]) do
+                if ENV["type"](rec) == "table" and rec["State"] == "Carried" then
+                    local uid = ENV["tonumber"](rec["CarrierUserId"])
+                    if uid then set[uid] = true end
+                end
+            end
+        end
+        return set
+    end
+
+    -- Closest player inside range, weighted heavily toward egg carriers
+    local function pickTarget(myHrp)
+        local range    = getRange()
+        local myPos    = myHrp["Position"]
+        local carriers = buildCarrierSet()
+        local best, bestDist = nil, nil
+        for _, plr in ENV["ipairs"](CALL(CTX["Players"]["Players"], "GetPlayers")) do
+            if plr ~= CTX["Players"]["LP"] then
+                local hrp = aliveHrp(plr)
+                if hrp then
+                    local d = (hrp["Position"] - myPos)["Magnitude"]
+                    if d <= range then
+                        local adj = d
+                        if carriers[plr["UserId"]] then adj = adj - 40 end
+                        if not bestDist or adj < bestDist then
+                            best = plr
+                            bestDist = adj
+                        end
+                    end
+                end
+            end
+        end
+        return best
+    end
+
+    local function swingAt(player)
+        if not Settings["batAura"] then return false end
+        if not player or player == CTX["Players"]["LP"] then return false end
+        local now = ENV["os"]["clock"]()
+        if now - lastSwingAt < SWING_COOLDOWN then return false end
+        local myHrp = CTX["fn2217"]()
+        local theirHrp = aliveHrp(player)
+        if not myHrp or not theirHrp then return false end
+        if (myHrp["Position"] - theirHrp["Position"])["Magnitude"] > getRange() then
+            return false
+        end
+        local bat = equippedBat() or ensureBat()
+        if not bat then return false end
+        local rem = getRemote()
+        if not rem then return false end
+        lastSwingAt = now
+        local id = nextSwingId()
+        ENV["pcall"](function() CALL(rem, "FireServer", player, id) end)
+        return true
+    end
+
+    local function tick()
+        if not Settings["batAura"] then return end
+        if not CTX["fn2244"]() then return end
+        local hrp = CTX["fn2217"]()
+        if not hrp then return end
+        -- Keep a bat in hand while Auto Steal is running so we can chase thieves
+        if Settings["autoSteal"] then ensureBat() end
+        local target = pickTarget(hrp)
+        if target then swingAt(target) end
+    end
+
+    local conn = CALL(CTX["Players"]["RunService"]["Heartbeat"], "Connect", function()
+        if not _G["__SNE_SESSION_TOKEN"] then return end
+        ENV["pcall"](tick)
+    end)
+
+    return {
+        tick    = tick,
+        swingAt = swingAt,
+        range   = getRange,
+        conn    = conn,
+        stop    = function()
+            ENV["pcall"](function() conn["Disconnect"](conn) end)
+        end,
+    }
+end)()
+
+State["__SNE_BatAura"] = CALL(State["slot26520"], "AddSection", {
+    ["Title"] = "Bat Aura",
+    ["Icon"]  = "zap",
+    ["Side"]  = "Left",
+})
+State["fn27467"](CALL(State["__SNE_BatAura"], "AddToggle", {
+    ["Title"]   = "Bat Aura",
+    ["Content"] = "Auto-swing at nearby players. Auto Steal keeps a bat equipped and prioritises whoever is carrying your egg.",
+    ["Default"] = false,
+    ["Callback"] = function(w)
+        Settings["batAura"] = w and true or false
+    end,
+}))
+State["fn27467"](CALL(State["__SNE_BatAura"], "AddSlider", {
+    ["Title"]     = "Swing Range",
+    ["Content"]   = "Studs. Hits any player inside this distance.",
+    ["Min"]       = 5,
+    ["Max"]       = 40,
+    ["Increment"] = 1,
+    ["Default"]   = 17,
+    ["Callback"] = function(w)
+        Settings["batAuraRange"] = ENV["tonumber"](w) or 17
+    end,
+}))
+-- =====================================================================
+-- END BAT AURA
+-- =====================================================================
+
 					State["slot26527"] = CALL(State["slot25468"], "CreateTab", {
 						["Title"] = _G["__SNE_T"]("Tab_Presets", "Presets"),
 						["Icon"] = "save",
@@ -13787,6 +14504,74 @@ return (function(var974, ...)
 						"AddSection",
 						{ ["Title"] = _G["__SNE_T"]("Sec_Almanac", "Almanac"), ["Icon"] = "gift", ["Side"] = "Right" }
 					)
+					-- =====================================================================
+-- DEFENCE — first section on the Extras tab
+-- =====================================================================
+State["__SNE_Defence"] = CALL(State["slot26520"], "AddSection", {
+    ["Title"] = "Defence",
+    ["Icon"]  = "shield",
+    ["Side"]  = "Left",
+})
+State["fn27467"](CALL(State["__SNE_Defence"], "AddToggle", {
+    ["Title"]   = "Anti Trap",
+    ["Content"] = "Clears traps, unanchors the root and disables CanTouch on every part of your body so trap and guard touch-triggers can't register.",
+    ["Default"] = false,
+    ["Callback"] = function(w)
+        Settings["antiTrap"] = w and true or false
+        ENV["pcall"](function() State["Defence_Api"].apply() end)
+    end,
+}))
+State["fn27467"](CALL(State["__SNE_Defence"], "AddToggle", {
+    ["Title"]   = "Anti Ragdoll",
+    ["Content"] = "Disables Dead / FallingDown / Ragdoll states, releases bound joints, and instantly stands you back up the moment anything flops you. Also mutes the server's RigSync knockback signal so guard hits cannot fling you during egg steals.",
+    ["Default"] = false,
+    ["Callback"] = function(w)
+        Settings["antiRagdoll"] = w and true or false
+        ENV["pcall"](function() State["Defence_Api"].apply() end)
+        -- Oxide port: tie the RigSync mute to this toggle too, so toggling
+        -- here arms the same path Auto Steal uses.
+        ENV["pcall"](function()
+            local sg = Settings["stealGuards"]
+            if not sg then return end
+            if w then
+                sg.muteRigSync()
+            else
+                if not Settings["immunity"] then
+                    sg.unmuteRigSync()
+                end
+            end
+        end)
+    end,
+}))
+
+State["fn27467"](CALL(State["__SNE_Defence"], "AddToggle", {
+    ["Title"]   = "Anti Mob",
+    ["Content"] = "Guards and other players' bats cannot flop or knock you. Kills guard AI, neutralises their hitboxes and mutes incoming Strike/Slap/Ragdoll remotes. Your own bat still swings.",
+    ["Default"] = false,
+    ["Callback"] = function(w)
+        Settings["antiMob"] = w and true or false
+        ENV["pcall"](function() State["Defence_Api"].apply() end)
+    end,
+}))
+
+
+State["__SNE_Defence"].AddButton = CALL(State["__SNE_Defence"], "AddButton", {
+    ["Title"]       = "Reset Defence",
+    ["Description"] = "Turn every defensive patch off and restore your body and any touched guard parts.",
+    ["Callback"] = function()
+        Settings["antiTrap"]    = false
+        Settings["antiMob"]     = false
+        Settings["antiRagdoll"] = false
+        ENV["pcall"](function() State["Defence_Api"].stop() end)
+        ENV["pcall"](function()
+            local sg = Settings["stealGuards"]
+            if sg then
+                if sg.stopRigSync then sg.stopRigSync() end
+                if sg.unmuteRigSync then sg.unmuteRigSync() end
+            end
+        end)
+    end,
+})
 					State["__SNE_T13"] = CALL(
 						State["slot26520"],
 						"AddSection",
@@ -13816,6 +14601,585 @@ return (function(var974, ...)
 						["Icon"] = "triangle-alert",
 						["Side"] = "Right",
 					})
+					-- =====================================================================
+-- ESP TAB
+-- =====================================================================
+State["slot26535"] = CALL(State["slot25468"], "CreateTab", {
+    ["Title"] = "ESP",
+    ["Icon"] = "crosshair",
+    ["Description"] = "Egg ESP, plot ESP, beam tracker and icon cache",
+})
+State["ESP_Sec_Field"] = CALL(State["slot26535"], "AddSection", {
+    ["Title"] = "Field Eggs",
+    ["Icon"] = "egg",
+    ["Side"] = "Left",
+})
+State["ESP_Sec_Plot"] = CALL(State["slot26535"], "AddSection", {
+    ["Title"] = "Plot Eggs & Beam",
+    ["Icon"] = "target",
+    ["Side"] = "Right",
+})
+State["ESP_Sec_Perf"] = CALL(State["slot26535"], "AddSection", {
+    ["Title"] = "Performance",
+    ["Icon"] = "gauge",
+    ["Side"] = "Right",
+    ["Open"] = false,
+})
+
+State["fn27467"](CALL(State["ESP_Sec_Field"], "AddToggle", {
+    ["Title"] = "Field Egg ESP",
+    ["Content"] = "Show a card over every stealable egg in the field.",
+    ["Default"] = false,
+    ["Callback"] = function(w)
+        Settings["espField"] = w and true or false
+    end,
+}))
+State["fn27467"](CALL(State["ESP_Sec_Field"], "AddDropdown", {
+    ["Title"] = "Filter",
+    ["Content"] = "Which eggs to draw.",
+    ["Multi"] = false,
+    ["Options"] = { "All eggs", "Eggs matching my filters", "Stolen target only" },   -- <-- add the middle one
+    ["Default"] = "All eggs",
+    ["Callback"] = function(w)
+        local pick = (ENV["type"](w) == "table") and w[1] or w
+        Settings["espFilter"] = pick or "All eggs"
+    end,
+}))
+
+State["fn27467"](CALL(State["ESP_Sec_Plot"], "AddToggle", {
+    ["Title"] = "Plot Egg ESP",
+    ["Content"] = "Show a card over every egg placed on your plot. Green when ready to hatch.",
+    ["Default"] = false,
+    ["Callback"] = function(w)
+        Settings["espPlot"] = w and true or false
+    end,
+}))
+State["fn27467"](CALL(State["ESP_Sec_Plot"], "AddToggle", {
+    ["Title"] = "Beam to Carried Egg",
+    ["Content"] = "Line from your character to whichever egg you are currently carrying while Auto Steal is active.",
+    ["Default"] = false,
+    ["Callback"] = function(w)
+        Settings["espBeam"] = w and true or false
+    end,
+}))
+CALL(State["ESP_Sec_Plot"], "AddButton", {
+    ["Title"] = "Clear ESP Pool",
+    ["Description"] = "Wipe every card and beam now without toggling off.",
+    ["Callback"] = function()
+        if State["ESP_Api"] and State["ESP_Api"].clear then
+            ENV["pcall"](State["ESP_Api"].clear)
+        end
+    end,
+})
+
+State["fn27467"](CALL(State["ESP_Sec_Perf"], "AddSlider", {
+    ["Title"] = "Tick Rate",
+    ["Content"] = "How often ESP updates, in seconds.",
+    ["Min"] = 0.05,
+    ["Max"] = 0.5,
+    ["Increment"] = 0.01,
+    ["Default"] = 0.08,
+    ["Callback"] = function(w)
+        Settings["espTick"] = ENV["tonumber"](w) or 0.08
+    end,
+}))
+
+-- =====================================================================
+-- ESP SUBSYSTEM
+-- =====================================================================
+State["ESP_Api"] = (function()
+    local world = nil
+    local espFolder = nil
+    local pool = {}
+    local lastTick = 0
+    local uid = ENV["tostring"](CTX["Players"]["LP"]["UserId"])
+    local guiName = "Santos HubESP_" .. uid
+    local folderName = "Santos HubEsp"
+    local beamObj, beamA, beamB, beamTip
+
+    local function ensureWorld()
+        if world and world["Parent"] then return world end
+        local parent
+        if ENV["type"](ENV["gethui"]) == "function" then
+            local ok, h = ENV["pcall"](ENV["gethui"])
+            if ok and h then parent = h end
+        end
+        parent = parent or CTX["Players"]["CoreGui"]
+        if not parent then
+            parent = CALL(CTX["Players"]["LP"], "FindFirstChild", "PlayerGui")
+        end
+        if not parent then return nil end
+        local existing = CALL(parent, "FindFirstChild", guiName)
+        if existing then ENV["pcall"](function() existing["Destroy"](existing) end) end
+        local sg = ENV["Instance"]["new"]("ScreenGui")
+        sg["Name"] = guiName
+        sg["ResetOnSpawn"] = false
+        sg["IgnoreGuiInset"] = true
+        sg["DisplayOrder"] = 100
+        sg["ZIndexBehavior"] = ENV["Enum"]["ZIndexBehavior"]["Sibling"]
+        sg["Parent"] = parent
+        world = sg
+        return world
+    end
+
+    local function ensureFolder()
+        if espFolder and espFolder["Parent"] == CTX["Players"]["Workspace"] then return espFolder end
+        local existing = CALL(CTX["Players"]["Workspace"], "FindFirstChild", folderName)
+        if existing then ENV["pcall"](function() existing["Destroy"](existing) end) end
+        local f = ENV["Instance"]["new"]("Folder")
+        f["Name"] = folderName
+        f["Parent"] = CTX["Players"]["Workspace"]
+        espFolder = f
+        return espFolder
+    end
+
+    local function makeCard()
+        local bb = ENV["Instance"]["new"]("BillboardGui")
+        bb["AlwaysOnTop"] = true
+        bb["LightInfluence"] = 0
+        bb["MaxDistance"] = 1000000
+        bb["Size"] = ENV["UDim2"]["fromOffset"](152, 34)
+        bb["StudsOffset"] = ENV["Vector3"]["new"](0, 2.2, 0)
+        bb["ResetOnSpawn"] = false
+        bb["ZIndexBehavior"] = ENV["Enum"]["ZIndexBehavior"]["Sibling"]
+        bb["Parent"] = ensureWorld()
+
+        local card = ENV["Instance"]["new"]("Frame")
+        card["BackgroundColor3"] = ENV["Color3"]["fromRGB"](16, 15, 14)
+        card["BackgroundTransparency"] = 0.34
+        card["BorderSizePixel"] = 0
+        card["Size"] = ENV["UDim2"]["fromScale"](1, 1)
+        card["ClipsDescendants"] = true
+        card["ZIndex"] = 1
+        card["Parent"] = bb
+        ENV["Instance"]["new"]("UICorner", card)["CornerRadius"] = ENV["UDim"]["new"](0, 8)
+        local stroke = ENV["Instance"]["new"]("UIStroke", card)
+        stroke["Color"] = ENV["Color3"]["fromRGB"](70, 64, 56)
+        stroke["Thickness"] = 1
+        stroke["Transparency"] = 0.38
+        stroke["ApplyStrokeMode"] = ENV["Enum"]["ApplyStrokeMode"]["Border"]
+
+        local accent = ENV["Instance"]["new"]("Frame")
+        accent["BackgroundColor3"] = State["list"]["accent"]
+        accent["BorderSizePixel"] = 0
+        accent["Size"] = ENV["UDim2"]["new"](0, 2, 1, -8)
+        accent["Position"] = ENV["UDim2"]["fromOffset"](3, 4)
+        accent["ZIndex"] = 2
+        accent["Parent"] = card
+        ENV["Instance"]["new"]("UICorner", accent)["CornerRadius"] = ENV["UDim"]["new"](0, 2)
+
+        local icon = ENV["Instance"]["new"]("ImageLabel")
+        icon["BackgroundTransparency"] = 1
+        icon["Position"] = ENV["UDim2"]["fromOffset"](8, 6)
+        icon["Size"] = ENV["UDim2"]["fromOffset"](22, 22)
+        icon["ScaleType"] = ENV["Enum"]["ScaleType"]["Fit"]
+        icon["Visible"] = false
+        icon["ZIndex"] = 2
+        icon["Parent"] = card
+        ENV["Instance"]["new"]("UICorner", icon)["CornerRadius"] = ENV["UDim"]["new"](0, 5)
+
+        local title = ENV["Instance"]["new"]("TextLabel")
+        title["BackgroundTransparency"] = 1
+        title["Position"] = ENV["UDim2"]["fromOffset"](8, 2)
+        title["Size"] = ENV["UDim2"]["new"](1, -12, 0, 14)
+        title["Font"] = ENV["Enum"]["Font"]["GothamBold"]
+        title["Text"] = ""
+        title["TextColor3"] = ENV["Color3"]["fromRGB"](232, 238, 228)
+        title["TextSize"] = 11
+        title["TextXAlignment"] = ENV["Enum"]["TextXAlignment"]["Left"]
+        title["TextTruncate"] = ENV["Enum"]["TextTruncate"]["AtEnd"]
+        title["ZIndex"] = 2
+        title["Parent"] = card
+
+        local sub = ENV["Instance"]["new"]("TextLabel")
+        sub["BackgroundTransparency"] = 1
+        sub["Position"] = ENV["UDim2"]["fromOffset"](8, 16)
+        sub["Size"] = ENV["UDim2"]["new"](1, -12, 0, 14)
+        sub["Font"] = ENV["Enum"]["Font"]["RobotoMono"]
+        sub["Text"] = ""
+        sub["TextColor3"] = ENV["Color3"]["fromRGB"](168, 188, 162)
+        sub["TextSize"] = 9
+        sub["TextXAlignment"] = ENV["Enum"]["TextXAlignment"]["Left"]
+        sub["TextYAlignment"] = ENV["Enum"]["TextYAlignment"]["Top"]
+        sub["TextTruncate"] = ENV["Enum"]["TextTruncate"]["AtEnd"]
+        sub["ZIndex"] = 2
+        sub["Parent"] = card
+
+        return { bb = bb, card = card, stroke = stroke, accent = accent, icon = icon, title = title, sub = sub }
+    end
+
+    local function drawCard(key, pos, data)
+        if not pos then return end
+        local entry = pool[key]
+        if entry and (not entry.bb or not entry.bb["Parent"]) then
+            if entry.dummy then ENV["pcall"](function() entry.dummy["Destroy"](entry.dummy) end) end
+            entry = nil
+            pool[key] = nil
+        end
+        if not entry then
+            entry = makeCard()
+            pool[key] = entry
+        end
+        entry.alive = true
+        entry.pos = pos
+        local folder = ensureFolder()
+        if not entry.dummy or not entry.dummy["Parent"] then
+            if entry.dummy then ENV["pcall"](function() entry.dummy["Destroy"](entry.dummy) end) end
+            local p = ENV["Instance"]["new"]("Part")
+            p["Name"] = "SantosEspAdorn"
+            p["Anchored"] = true
+            p["CanCollide"] = false
+            p["CanQuery"] = false
+            p["CanTouch"] = false
+            p["CastShadow"] = false
+            p["Transparency"] = 1
+            p["Size"] = ENV["Vector3"]["new"](0.15, 0.15, 0.15)
+            p["Parent"] = folder
+            entry.dummy = p
+        end
+        ENV["pcall"](function() entry.dummy["CFrame"] = ENV["CFrame"]["new"](pos) end)
+        entry.bb["Adornee"] = entry.dummy
+        entry.bb["Parent"] = ensureWorld()
+        entry.bb["Enabled"] = true
+
+        local color = data.color or State["list"]["accent"]
+        entry.title["Text"] = ENV["tostring"](data.name or "")
+        entry.sub["Text"] = ENV["tostring"](data.sub or "")
+        entry.accent["BackgroundColor3"] = color
+
+        local h = not data.tall and 34 or 46
+        local icon = data.icon
+        local w = not icon and 152 or 180
+        if icon then
+            entry.icon["Image"] = icon
+            entry.icon["Visible"] = true
+            entry.title["Position"] = ENV["UDim2"]["fromOffset"](34, 2)
+            entry.title["Size"] = ENV["UDim2"]["new"](1, -40, 0, 14)
+            entry.sub["Position"] = ENV["UDim2"]["fromOffset"](34, 16)
+            entry.sub["Size"] = ENV["UDim2"]["new"](1, -40, 0, not data.tall and 14 or 26)
+            entry.sub["TextWrapped"] = data.tall == true
+        else
+            entry.icon["Image"] = ""
+            entry.icon["Visible"] = false
+            entry.title["Position"] = ENV["UDim2"]["fromOffset"](8, 2)
+            entry.title["Size"] = ENV["UDim2"]["new"](1, -12, 0, 14)
+            entry.sub["Position"] = ENV["UDim2"]["fromOffset"](8, 16)
+            entry.sub["Size"] = ENV["UDim2"]["new"](1, -12, 0, not data.tall and 14 or 26)
+            entry.sub["TextWrapped"] = data.tall == true
+        end
+        entry.bb["Size"] = ENV["UDim2"]["fromOffset"](w, h)
+    end
+
+    local function prunePool()
+        for k, v in ENV["pairs"](pool) do
+            if not v.alive then
+                if v.bb then v.bb["Destroy"](v.bb) end
+                if v.dummy then ENV["pcall"](function() v.dummy["Destroy"](v.dummy) end) end
+                pool[k] = nil
+            else
+                v.alive = false
+            end
+        end
+    end
+
+    local function fmtNum(n)
+        n = ENV["tonumber"](n) or 0
+        local a = ENV["math"]["abs"](n)
+        if a >= 1e12 then return ENV["string"]["format"]("%.2fT", n / 1e12) end
+        if a >= 1e9 then return ENV["string"]["format"]("%.2fB", n / 1e9) end
+        if a >= 1e6 then return ENV["string"]["format"]("%.2fm", n / 1e6) end
+        if a >= 1e3 then return ENV["string"]["format"]("%.1fk", n / 1e3) end
+        return ENV["string"]["format"]("%.0f", n)
+    end
+
+    local function rarityColor(rnum)
+        rnum = ENV["tonumber"](rnum) or 0
+        if rnum >= 11 then return ENV["Color3"]["fromRGB"](255, 236, 150) end
+        if rnum >= 10 then return ENV["Color3"]["fromRGB"](255, 90, 210) end
+        if rnum >= 9 then return ENV["Color3"]["fromRGB"](120, 210, 255) end
+        if rnum >= 8 then return ENV["Color3"]["fromRGB"](255, 80, 110) end
+        if rnum >= 7 then return ENV["Color3"]["fromRGB"](255, 186, 70) end
+        if rnum >= 6 then return ENV["Color3"]["fromRGB"](186, 120, 255) end
+        if rnum >= 5 then return ENV["Color3"]["fromRGB"](255, 220, 90) end
+        if rnum >= 4 then return ENV["Color3"]["fromRGB"](160, 120, 255) end
+        if rnum >= 3 then return ENV["Color3"]["fromRGB"](90, 170, 255) end
+        if rnum >= 2 then return ENV["Color3"]["fromRGB"](120, 200, 120) end
+        return ENV["Color3"]["fromRGB"](210, 210, 210)
+    end
+
+    local function eggIcon(cat)
+        if not cat then return nil end
+        local cfg = CTX["Players"]["Assets"][cat]
+        if ENV["type"](cfg) ~= "table" then return nil end
+        local ok, id = ENV["pcall"](CTX["fn2370"], cat)
+        if ok and ENV["type"](id) == "string" and id ~= "" then return id end
+        if ENV["type"](cfg["Egg"]) == "table" then
+            local e = cfg["Egg"]
+            if ENV["type"](e["Icon"]) == "string" then return e["Icon"] end
+            if ENV["type"](e["Image"]) == "string" then return e["Image"] end
+        end
+        return nil
+    end
+
+    local function cardDataFor(rec)
+        local cat = rec["AssetCategory"]
+        local cfg = cat and CTX["Players"]["Assets"][cat] or nil
+        local rnum, rname = 0, "?"
+        if cfg and ENV["type"](cfg["Rarity"]) == "table" then
+            rnum = ENV["tonumber"](cfg["Rarity"]["RarityNumber"]) or 0
+            rname = ENV["tostring"](cfg["Rarity"]["DisplayName"] or cfg["Rarity"]["_id"] or "?")
+        end
+        local earn = 0
+        local ok, val = ENV["pcall"](CTX["fn3438"], rec)
+        if ok and ENV["type"](val) == "number" then earn = val end
+        local name = cfg and (cfg["DisplayName"] or (ENV["type"](cfg["Egg"]) == "table" and cfg["Egg"]["DisplayName"])) or cat or "?"
+        local parts = { fmtNum(earn) .. "/s", rname }
+        local mutStr = ""
+        local muts = rec["Mutations"]
+        if ENV["type"](muts) == "table" and #muts > 0 then
+            mutStr = ENV["table"]["concat"](muts, " · ")
+            parts[#parts + 1] = mutStr
+        end
+        return {
+            name = ENV["tostring"](name),
+            sub = ENV["table"]["concat"](parts, " · "),
+            color = rarityColor(rnum),
+            tall = mutStr ~= "",
+            icon = eggIcon(cat),
+        }
+    end
+
+    local function fieldEggPos(rec)
+        local bcf = rec["BottomCFrame"]
+        if ENV["typeof"](bcf) == "CFrame" then return bcf["Position"] + ENV["Vector3"]["new"](0, 2.5, 0) end
+        if ENV["typeof"](bcf) == "Vector3" then return bcf + ENV["Vector3"]["new"](0, 2.5, 0) end
+        local bounds = rec["BoundsCFrame"]
+        if ENV["typeof"](bounds) == "CFrame" then return bounds["Position"] end
+        return nil
+    end
+
+    local function plotEggPos(rec)
+        local plc = rec["Placement"]
+        if ENV["type"](plc) ~= "table" then return nil end
+        local lcf = plc["LocalCFrame"]
+        if ENV["typeof"](lcf) ~= "CFrame" then return nil end
+        local pd
+        local ok, res = ENV["pcall"](CTX["Players"]["PlotCmds"]["GetPlotData"])
+        if ok then pd = res end
+        if ENV["type"](pd) ~= "table" then return nil end
+        local anchor = pd["CenterPoint"]
+        if ENV["typeof"](anchor) == "Instance" and CALL(anchor, "IsA", "BasePart") then
+            anchor = anchor["CFrame"]
+        end
+        if ENV["typeof"](anchor) ~= "CFrame" then anchor = pd["RespawnPointCFrame"] end
+        if ENV["typeof"](anchor) ~= "CFrame" then return nil end
+        local w = anchor * lcf
+        return w["Position"] + ENV["Vector3"]["new"](0, 3, 0)
+    end
+
+    local function plotEggReady(rec)
+        local u = rec["Uid"]
+        if not u then return false end
+        local ok, ready = ENV["pcall"](CTX["Players"]["EggCmds"]["IsLocalEggReady"], u)
+        return ok and ready == true
+    end
+
+    local function drawBeam(fromPart, toPos)
+        if not fromPart or not toPos then
+            if beamObj then beamObj["Enabled"] = false end
+            return
+        end
+        local folder = ensureFolder()
+        if not beamA or beamA["Parent"] ~= fromPart then
+            if beamA then ENV["pcall"](function() beamA["Destroy"](beamA) end) end
+            beamA = ENV["Instance"]["new"]("Attachment")
+            beamA["Name"] = "SantosBeamA"
+            beamA["Parent"] = fromPart
+        end
+        if not beamTip or not beamTip["Parent"] then
+            beamTip = ENV["Instance"]["new"]("Part")
+            beamTip["Name"] = "SantosBeamTip"
+            beamTip["Anchored"] = true
+            beamTip["CanCollide"] = false
+            beamTip["CanQuery"] = false
+            beamTip["CanTouch"] = false
+            beamTip["Transparency"] = 1
+            beamTip["Size"] = ENV["Vector3"]["new"](0.2, 0.2, 0.2)
+            beamTip["Parent"] = folder
+        end
+        ENV["pcall"](function() beamTip["CFrame"] = ENV["CFrame"]["new"](toPos) end)
+        if not beamB or beamB["Parent"] ~= beamTip then
+            if beamB then ENV["pcall"](function() beamB["Destroy"](beamB) end) end
+            beamB = ENV["Instance"]["new"]("Attachment")
+            beamB["Name"] = "SantosBeamB"
+            beamB["Parent"] = beamTip
+        end
+        if not beamObj or not beamObj["Parent"] then
+            beamObj = ENV["Instance"]["new"]("Beam")
+            beamObj["Name"] = "SantosBeam"
+            beamObj["FaceCamera"] = true
+            beamObj["Width0"] = 0.16
+            beamObj["Width1"] = 0.05
+            beamObj["LightEmission"] = 0.7
+            beamObj["Transparency"] = ENV["NumberSequence"]["new"](0.15)
+            beamObj["Parent"] = folder
+        end
+        beamObj["Attachment0"] = beamA
+        beamObj["Attachment1"] = beamB
+        beamObj["Color"] = ENV["ColorSequence"]["new"](State["list"]["accent"])
+        beamObj["Enabled"] = true
+    end
+
+    local function tick()
+        local any = Settings["espField"] or Settings["espPlot"] or Settings["espBeam"]
+        if not any then
+            for _, v in ENV["pairs"](pool) do
+                if v.bb then v.bb["Enabled"] = false end
+            end
+            if beamObj then beamObj["Enabled"] = false end
+            return
+        end
+        local now = ENV["os"]["clock"]()
+        local interval = ENV["tonumber"](Settings["espTick"]) or 0.08
+        if now - lastTick < interval then return end
+        lastTick = now
+
+        local targetUid = nil
+        if CTX["fn3204"] then
+            local ok, u = ENV["pcall"](CTX["fn3204"])
+            if ok then targetUid = u end
+        end
+
+        if Settings["espField"] then
+    local ok, snap = ENV["pcall"](CTX["Players"]["EggCmds"]["GetAreaEggSnapshot"])
+    if ok and ENV["type"](snap) == "table" and ENV["type"](snap["Records"]) == "table" then
+        local filter = Settings["espFilter"] or "All eggs"
+        local filtNames, filtRarities
+        if filter == "Eggs matching my filters" then
+            filtNames = CTX["fn2584"](Settings["stealNames"])
+            filtRarities = CTX["fn2584"](Settings["minRarityNames"])
+        end
+        for _, rec in ENV["ipairs"](snap["Records"]) do
+            if ENV["type"](rec) == "table" and rec["State"] == "Slot" then
+                local include = true
+                if filter == "Stolen target only" then
+                    include = (targetUid ~= nil) and (rec["Uid"] == targetUid)
+                elseif filter == "Eggs matching my filters" then
+                    local _, rname = CTX["fn2352"](rec["AssetCategory"])
+                    include = CTX["fn2669"](rec, rname, filtNames, filtRarities) and true or false
+                end
+                if include then
+                    local pos = fieldEggPos(rec)
+                    if pos then
+                        local data = cardDataFor(rec)
+                        if targetUid and rec["Uid"] == targetUid then
+                            data.color = State["list"]["accent"]
+                            data.name = "▸ " .. data.name
+                        end
+                        drawCard("f:" .. ENV["tostring"](rec["Uid"]), pos, data)
+                    end
+                end
+            end
+        end
+    end
+end
+
+        if Settings["espPlot"] then
+            local ok, list = ENV["pcall"](
+                CTX["Players"]["EggCmds"]["GetOwnerRuntimeRecords"],
+                CTX["Players"]["LP"]["UserId"]
+            )
+            if ok and ENV["type"](list) == "table" then
+                for k, rec in ENV["pairs"](list) do
+                    if ENV["type"](rec) == "table" and rec["Placement"] ~= nil then
+                        local pos = plotEggPos(rec)
+                        if pos then
+                            local ready = plotEggReady(rec)
+                            local data = cardDataFor(rec)
+                            data.color = ready and State["list"]["good"] or State["list"]["muted"]
+                            data.sub = (ready and "READY  ·  " or "hatching  ·  ") .. data.sub
+                            drawCard("p:" .. ENV["tostring"](rec["Uid"] or k), pos, data)
+                        end
+                    end
+                end
+            end
+        end
+
+        if Settings["espBeam"] and Settings["autoSteal"] and targetUid then
+            local char = CTX["LP"]()
+            local hrp = char and CALL(char, "FindFirstChild", "HumanoidRootPart")
+            local rec
+            local ok, list = ENV["pcall"](
+                CTX["Players"]["EggCmds"]["GetOwnerRuntimeRecords"],
+                CTX["Players"]["LP"]["UserId"]
+            )
+            if ok and ENV["type"](list) == "table" then
+                for k, v in ENV["pairs"](list) do
+                    if ENV["type"](v) == "table" and (v["Uid"] == targetUid or ENV["tostring"](k) == targetUid) then
+                        rec = v
+                        break
+                    end
+                end
+            end
+            if not rec then
+                local ok2, snap = ENV["pcall"](CTX["Players"]["EggCmds"]["GetAreaEggSnapshot"])
+                if ok2 and ENV["type"](snap) == "table" and ENV["type"](snap["Records"]) == "table" then
+                    for _, v in ENV["ipairs"](snap["Records"]) do
+                        if ENV["type"](v) == "table" and v["Uid"] == targetUid then
+                            rec = v
+                            break
+                        end
+                    end
+                end
+            end
+            local pos
+            if rec then
+                pos = fieldEggPos(rec) or plotEggPos(rec)
+            end
+            if hrp and pos then
+                drawBeam(hrp, pos)
+            elseif beamObj then
+                beamObj["Enabled"] = false
+            end
+        elseif beamObj then
+            beamObj["Enabled"] = false
+        end
+
+        prunePool()
+    end
+
+    local function clearAll()
+        for _, v in ENV["pairs"](pool) do
+            if v.bb then ENV["pcall"](function() v.bb["Destroy"](v.bb) end) end
+            if v.dummy then ENV["pcall"](function() v.dummy["Destroy"](v.dummy) end) end
+        end
+        pool = {}
+        if beamA then ENV["pcall"](function() beamA["Destroy"](beamA) end); beamA = nil end
+        if beamB then ENV["pcall"](function() beamB["Destroy"](beamB) end); beamB = nil end
+        if beamTip then ENV["pcall"](function() beamTip["Destroy"](beamTip) end); beamTip = nil end
+        if beamObj then ENV["pcall"](function() beamObj["Destroy"](beamObj) end); beamObj = nil end
+        if espFolder then ENV["pcall"](function() espFolder["Destroy"](espFolder) end); espFolder = nil end
+        if world then ENV["pcall"](function() world["Destroy"](world) end); world = nil end
+    end
+
+    local conn = CALL(CTX["Players"]["RunService"]["Heartbeat"], "Connect", function()
+        if not _G["__SNE_SESSION_TOKEN"] then return end
+        ENV["pcall"](tick)
+    end)
+
+    return { tick = tick, clear = clearAll, conn = conn }
+end)()
+
+-- hook ESP cleanup into Santos unload
+local _espPrevToken = State["__SNE_SESSION_TOKEN"]
+State["__SNE_SESSION_TOKEN"] = function()
+    if State["ESP_Api"] and State["ESP_Api"].clear then
+        ENV["pcall"](State["ESP_Api"].clear)
+    end
+    if _espPrevToken then
+        return _espPrevToken()
+    end
+end
 					do
 						State["LP"] = 0
 						ENV["pcall"](function()
@@ -15195,6 +16559,11 @@ return (function(var974, ...)
 							Settings["autoRift"] = false
 							Settings["busy"] = false
 							Settings["repositioning"] = false
+							ENV["pcall"](function()
+            if Settings["stealGuards"] and Settings["stealGuards"]["stopRigSync"] then
+                Settings["stealGuards"]["stopRigSync"]()
+            end
+        end)
 							if Settings["riftBumpGeneration"] then
 								ENV["pcall"](Settings["riftBumpGeneration"])
 							end
