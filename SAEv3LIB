@@ -42,9 +42,8 @@ do
 end
 
 local function createEmbeddedSpider()
-    -- Santos Hub - flat image icon instead of the original 3D mesh.
-    -- The ViewportFrame still renders it, so it behaves exactly like the
-    -- old mesh but shows a static picture you can change any time.
+    -- Santos Hub — Huntress Wizard launcher icon.
+    -- 2D Image ID from the decal wrapper: 80823851019076
     local spider = Instance.new("Part")
     spider.Name = "SantosHubIcon"
     spider.Archivable = true
@@ -64,17 +63,15 @@ local function createEmbeddedSpider()
     spider.Reflectance = 0
     spider.RightSurface = Enum.SurfaceType.Smooth
     spider.RootPriority = -5
-    -- Aspect matches the launcher slot (roughly square-ish, the viewport
-    -- frames it automatically so the exact numbers don't matter much).
-    spider.Size = Vector3.new(2, 2, 0.05)
+    -- Thin square slab. The ViewportFrame auto-frames it, so only the ratio
+    -- matters, not the exact numbers.
+    spider.Size = Vector3.new(1, 1, 0.05)
     spider.TopSurface = Enum.SurfaceType.Smooth
     spider.Transparency = 0
     spider.MeshId = ""
-    spider.TextureID = "rbxassetid://112889630169597"
-    spider.CFrame = CFrame.new()
-
-    -- The ViewportFrame camera looks down +Z, so tilt the part to face it.
-    -- Without this the flat face points sideways and you'd see the edge.
+    spider.TextureID = "rbxassetid://80823851019076"
+    -- Face the viewport camera. Without this the back of the slab faces
+    -- the camera and you see a mirrored or empty image.
     spider.CFrame = CFrame.Angles(0, math.rad(180), 0)
 
     local headAttachment = Instance.new("Attachment")
