@@ -42,10 +42,8 @@ do
 end
 
 local function createEmbeddedSpider()
-    -- Santos Hub — Huntress Wizard launcher icon.
-    -- 2D Image ID from the decal wrapper: 80823851019076
-    local spider = Instance.new("Part")
-    spider.Name = "SantosHubIcon"
+    local spider = Instance.new("MeshPart")
+    spider.Name = "Spider"
     spider.Archivable = true
     spider.Anchored = true
     spider.BackSurface = Enum.SurfaceType.Smooth
@@ -54,28 +52,45 @@ local function createEmbeddedSpider()
     spider.CanCollide = false
     spider.CanQuery = false
     spider.CanTouch = false
-    spider.CastShadow = false
+    spider.CastShadow = true
     spider.Color = Color3.new(1, 1, 1)
     spider.FrontSurface = Enum.SurfaceType.Smooth
     spider.LeftSurface = Enum.SurfaceType.Smooth
     spider.Massless = true
-    spider.Material = Enum.Material.SmoothPlastic
+    spider.Material = Enum.Material.Plastic
     spider.Reflectance = 0
     spider.RightSurface = Enum.SurfaceType.Smooth
     spider.RootPriority = -5
-    -- Thin square slab. The ViewportFrame auto-frames it, so only the ratio
-    -- matters, not the exact numbers.
-    spider.Size = Vector3.new(1, 1, 0.05)
+    spider.Size = Vector3.new(
+        0.9052265286445618,
+        0.24434703588485718,
+        0.9125359058380127
+    )
     spider.TopSurface = Enum.SurfaceType.Smooth
     spider.Transparency = 0
-    spider.MeshId = ""
-    spider.TextureID = "rbxassetid://80823851019076"
-    -- Face the viewport camera. Without this the back of the slab faces
-    -- the camera and you see a mirrored or empty image.
-    spider.CFrame = CFrame.Angles(0, math.rad(180), 0)
+    spider.MeshId = "rbxassetid://135715081992798"
+    spider.TextureID = ""
+    spider.DoubleSided = false
+    spider.RenderFidelity = Enum.RenderFidelity.Automatic
+    spider.CollisionFidelity = Enum.CollisionFidelity.Box
+    spider.CFrame = CFrame.new()
 
     local headAttachment = Instance.new("Attachment")
     headAttachment.Name = "HeadAttachment"
+    headAttachment.CFrame = CFrame.new(
+        0.72625732421875,
+        -0.504150390625,
+        0.3289794921875,
+        0.7071012258529663,
+        -0.7068588733673096,
+        -0.01893438585102558,
+        -0.000011771917343139648,
+        0.026765286922454834,
+        -0.9996418952941895,
+        0.7071123719215393,
+        0.70684814453125,
+        0.018917446956038475
+    )
     headAttachment.Parent = spider
 
     return spider
