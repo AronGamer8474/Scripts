@@ -42,8 +42,11 @@ do
 end
 
 local function createEmbeddedSpider()
-    local spider = Instance.new("MeshPart")
-    spider.Name = "Spider"
+    -- Santos Hub - flat image icon instead of the original 3D mesh.
+    -- The ViewportFrame still renders it, so it behaves exactly like the
+    -- old mesh but shows a static picture you can change any time.
+    local spider = Instance.new("Part")
+    spider.Name = "SantosHubIcon"
     spider.Archivable = true
     spider.Anchored = true
     spider.BackSurface = Enum.SurfaceType.Smooth
@@ -52,45 +55,30 @@ local function createEmbeddedSpider()
     spider.CanCollide = false
     spider.CanQuery = false
     spider.CanTouch = false
-    spider.CastShadow = true
+    spider.CastShadow = false
     spider.Color = Color3.new(1, 1, 1)
     spider.FrontSurface = Enum.SurfaceType.Smooth
     spider.LeftSurface = Enum.SurfaceType.Smooth
     spider.Massless = true
-    spider.Material = Enum.Material.Plastic
+    spider.Material = Enum.Material.SmoothPlastic
     spider.Reflectance = 0
     spider.RightSurface = Enum.SurfaceType.Smooth
     spider.RootPriority = -5
-    spider.Size = Vector3.new(
-        0.9052265286445618,
-        0.24434703588485718,
-        0.9125359058380127
-    )
+    -- Aspect matches the launcher slot (roughly square-ish, the viewport
+    -- frames it automatically so the exact numbers don't matter much).
+    spider.Size = Vector3.new(2, 2, 0.05)
     spider.TopSurface = Enum.SurfaceType.Smooth
     spider.Transparency = 0
-    spider.MeshId = "rbxassetid://135715081992798"
-    spider.TextureID = ""
-    spider.DoubleSided = false
-    spider.RenderFidelity = Enum.RenderFidelity.Automatic
-    spider.CollisionFidelity = Enum.CollisionFidelity.Box
+    spider.MeshId = ""
+    spider.TextureID = "rbxassetid://112889630169597"
     spider.CFrame = CFrame.new()
+
+    -- The ViewportFrame camera looks down +Z, so tilt the part to face it.
+    -- Without this the flat face points sideways and you'd see the edge.
+    spider.CFrame = CFrame.Angles(0, math.rad(180), 0)
 
     local headAttachment = Instance.new("Attachment")
     headAttachment.Name = "HeadAttachment"
-    headAttachment.CFrame = CFrame.new(
-        0.72625732421875,
-        -0.504150390625,
-        0.3289794921875,
-        0.7071012258529663,
-        -0.7068588733673096,
-        -0.01893438585102558,
-        -0.000011771917343139648,
-        0.026765286922454834,
-        -0.9996418952941895,
-        0.7071123719215393,
-        0.70684814453125,
-        0.018917446956038475
-    )
     headAttachment.Parent = spider
 
     return spider
@@ -179,8 +167,8 @@ pcall(santosHubSetProperty, objects.obj2, "Archivable", true)
 pcall(santosHubSetProperty, objects.obj2, "Visible", true)
 pcall(santosHubSetProperty, objects.obj2, "Active", false)
 pcall(santosHubSetProperty, objects.obj2, "AnchorPoint", Vector2.new(0.5,0.5))
-pcall(santosHubSetProperty, objects.obj2, "BackgroundColor3", Color3.fromRGB(0,0,0))
-pcall(santosHubSetProperty, objects.obj2, "BackgroundTransparency", 0.4000000059604645)
+pcall(santosHubSetProperty, objects.obj2, "BackgroundColor3", Color3.fromRGB(15, 40, 22))
+pcall(santosHubSetProperty, objects.obj2, "BackgroundTransparency", 0.12)
 pcall(santosHubSetProperty, objects.obj2, "BorderColor3", Color3.fromRGB(0,0,0))
 pcall(santosHubSetProperty, objects.obj2, "BorderSizePixel", 0)
 pcall(santosHubSetProperty, objects.obj2, "ClipsDescendants", false)
@@ -2591,16 +2579,19 @@ local function applyPlainTextStyle(label)
     configureScaledStroke(stroke, Color3.fromRGB(0, 0, 0), 0.07999999821186066)
 end
 
+-- Santos Hub — Huntress Wizard buttons.
+-- Pale-leaf highlight at the top edge, leaf green in the middle, deep
+-- forest at the bottom. No saturated reds anywhere.
 local rebirthOuterGradient = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(252, 228, 236)),
-    ColorSequenceKeypoint.new(0.0570934266, Color3.fromRGB(244, 143, 177)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(194, 24, 91)),
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(197, 225, 165)),
+    ColorSequenceKeypoint.new(0.0570934266, Color3.fromRGB(139, 195, 74)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(27, 94, 32)),
 })
 
 local rebirthInnerGradient = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(252, 228, 236)),
-    ColorSequenceKeypoint.new(0.0155709349, Color3.fromRGB(244, 143, 177)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(194, 24, 91)),
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(197, 225, 165)),
+    ColorSequenceKeypoint.new(0.0155709349, Color3.fromRGB(139, 195, 74)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(27, 94, 32)),
 })
 
 local function addRedGradient(parent, name, color)
@@ -2656,7 +2647,8 @@ local function createRebirthStyleButton(parent, text, layoutOrder)
     base.Size = UDim2.fromScale(1, 0.92)
     base.ZIndex = 1
     base.Parent = button
-    addScaledStroke(base, Enum.ApplyStrokeMode.Border, 0.0599999987)
+local buttonStroke = addScaledStroke(base, Enum.ApplyStrokeMode.Border, 0.0599999987)
+buttonStroke.Color = Color3.fromRGB(244, 143, 177)   -- soft pink rim
 
     local colorFrame = Instance.new("Frame")
     colorFrame.Name = "ColorFrame"
@@ -5635,7 +5627,7 @@ local function createLibraryToggleRow(config)
     knobColor.Name = "Color"
     knobColor.Active = false
     knobColor.AnchorPoint = Vector2.new(0.5, 0)
-    knobColor.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    knobColor.BackgroundColor3 = Color3.fromRGB(197, 225, 165)
     knobColor.BorderSizePixel = 0
     knobColor.Position = UDim2.fromScale(0.5, 0)
     knobColor.Size = UDim2.fromScale(1, 0.9)
